@@ -1,0 +1,4 @@
+---
+[2m2024-10-27T23:17:34.911790Z[0m [32m INFO[0m [2mhl7_ls[0m[2m:[0m starting generic LSP server
+[2m2024-10-27T23:17:34.936337Z[0m [34mDEBUG[0m [2mhl7_ls[0m[2m:[0m starting main loop
+[2m2024-10-27T23:17:45.335813Z[0m [32m INFO[0m [2mhl7_ls[0m[2m:[0m shutting down server
