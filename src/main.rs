@@ -2,10 +2,10 @@ use color_eyre::eyre::Context;
 use color_eyre::Result;
 use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId};
 use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument};
-use lsp_types::request::HoverRequest;
+use lsp_types::request::{DocumentSymbolRequest, HoverRequest};
 use lsp_types::{
-    ClientCapabilities, HoverProviderCapability, PositionEncodingKind, TextDocumentSyncCapability,
-    TextDocumentSyncKind,
+    ClientCapabilities, HoverProviderCapability, OneOf, PositionEncodingKind,
+    TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 use lsp_types::{InitializeParams, ServerCapabilities};
 use std::io::Write;
@@ -13,6 +13,7 @@ use utils::build_response;
 
 mod diagnostics;
 mod docstore;
+mod document_symbols;
 mod hover;
 pub mod spec;
 pub mod utils;
@@ -60,10 +61,10 @@ fn main() -> Result<()> {
         // TODO: implement incremental sync
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
-        // document_symbol_provider: Some(OneOf::Right(lsp_types::DocumentSymbolOptions {
-        //     label: Some("HL7 Document".to_string()),
-        //     work_done_progress_options: Default::default(),
-        // })),
+        document_symbol_provider: Some(OneOf::Right(lsp_types::DocumentSymbolOptions {
+            label: Some("HL7 Document".to_string()),
+            work_done_progress_options: Default::default(),
+        })),
         ..Default::default()
     })
     .expect("can to serialize server capabilities");
@@ -112,6 +113,28 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                             tracing::warn!("Failed to handle hover request: {e:?}");
                             e
                         });
+                        let resp = build_response(id, resp);
+                        connection
+                            .sender
+                            .send(Message::Response(resp))
+                            .expect("can send response");
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
+                let req = match cast_request::<DocumentSymbolRequest>(req) {
+                    Ok((id, params)) => {
+                        tracing::trace!(id = ?id, "got DocumentSymbol request");
+                        let resp =
+                            document_symbols::handle_document_symbols_request(params, &doc_store)
+                                .map_err(|e| {
+                                    tracing::warn!(
+                                        "Failed to handle document symbols request: {e:?}"
+                                    );
+                                    e
+                                });
                         let resp = build_response(id, resp);
                         connection
                             .sender

@@ -75,6 +75,13 @@ pub fn range_from_offsets(text: &str, start: usize, end: usize) -> Range {
     }
 }
 
+pub fn std_range_to_lsp_range(text: &str, range: std::ops::Range<usize>) -> Range {
+    Range {
+        start: position_from_offset(text, range.start),
+        end: position_from_offset(text, range.end),
+    }
+}
+
 pub fn build_response<R: Serialize>(id: RequestId, result: Result<R>) -> Response {
     let (result, error) = match result {
         Ok(result) => (
