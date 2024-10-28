@@ -42,16 +42,31 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
 
         if let Some(field) = location.field {
             let field_description = spec::describe_field(message_version, seg.0, field.0);
+
+            let has_repeats = field.1.has_repeats();
+            let repeat = if has_repeats {
+                let repeat = location.repeat.map(|r| r.0).unwrap_or(0);
+                format!("[{repeat}]")
+            } else {
+                "".to_string()
+            };
+
+            let has_components = has_repeats
+                && location
+                    .repeat
+                    .map(|r| r.1.has_components())
+                    .unwrap_or(false);
+
             hover_text.push_str(
                 format!(
-                    "\n  {segment}.{field}: {field_description}",
+                    "\n  {segment}.{field}{repeat}: {field_description}",
                     segment = seg.0,
                     field = field.0,
                 )
                 .as_str(),
             );
 
-            if let Some(component) = location.component {
+            if let (true, Some(component)) = (has_components, location.component) {
                 let component_description =
                     spec::describe_component(message_version, seg.0, field.0, component.0);
                 hover_text.push_str(
@@ -65,18 +80,17 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
                 );
 
                 url = Some(format!(
-                    "https://hl7-definition.caristix.com/v2/HL7v{message_version}/Fields/{segment}.{field}.{component}",
-                    segment = seg.0,
-                    field = field.0,
-                    component = component.0
-                ));
-            }
-            else {
+                        "https://hl7-definition.caristix.com/v2/HL7v{message_version}/Fields/{segment}.{field}.{component}",
+                        segment = seg.0,
+                        field = field.0,
+                        component = component.0
+                    ));
+            } else {
                 url = Some(format!(
-                    "https://hl7-definition.caristix.com/v2/HL7v{message_version}/Fields/{segment}.{field}",
-                    segment = seg.0,
-                    field = field.0
-                ));
+                        "https://hl7-definition.caristix.com/v2/HL7v{message_version}/Fields/{segment}.{field}",
+                        segment = seg.0,
+                        field = field.0
+                    ));
             }
         } else {
             url = Some(format!(

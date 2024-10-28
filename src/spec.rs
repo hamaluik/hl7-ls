@@ -65,12 +65,7 @@ pub fn describe_field(version: &str, segment: &str, field: usize) -> String {
         .unwrap_or_else(|| "Unknown segment".to_string())
 }
 
-pub fn describe_component(
-    version: &str,
-    segment: &str,
-    field: usize,
-    component: usize,
-) -> String {
+pub fn describe_component(version: &str, segment: &str, field: usize, component: usize) -> String {
     hl7_definitions::get_segment(version, segment)
         .map(|s| {
             s.fields
