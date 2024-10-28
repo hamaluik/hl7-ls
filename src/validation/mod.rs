@@ -41,7 +41,7 @@ impl ValidationError {
         }
     }
 
-    pub fn to_diagnostic(self, text: &str) -> Diagnostic {
+    pub fn into_diagnostic(self, text: &str) -> Diagnostic {
         Diagnostic {
             range: lsp_types::Range {
                 start: position_from_offset(text, self.range.start),

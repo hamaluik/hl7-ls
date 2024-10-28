@@ -15,7 +15,8 @@ pub fn handle_document_symbols_request(
     documents: &TextDocuments,
 ) -> Result<Vec<DocumentSymbol>> {
     let uri = params.text_document.uri;
-    let text = documents.get_document_content(&uri, None)
+    let text = documents
+        .get_document_content(&uri, None)
         .wrap_err_with(|| format!("no document found for uri: {uri:?}"))?;
 
     let message = hl7_parser::parse_message_with_lenient_newlines(text)

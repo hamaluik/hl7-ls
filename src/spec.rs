@@ -11,16 +11,21 @@ pub fn segment_description(version: &str, segment: &str) -> String {
 pub fn is_field_a_timestamp(version: &str, segment: &str, field: usize) -> bool {
     hl7_definitions::get_segment(version, segment)
         .and_then(|s| s.fields.get(field - 1))
-        .map(|f| { f.datatype == "TS" || f.datatype == "DTM" || f.datatype == "DRT" })
+        .map(|f| f.datatype == "TS" || f.datatype == "DTM" || f.datatype == "DRT")
         .unwrap_or(false)
 }
 
-pub fn is_component_a_timestamp(version: &str, segment: &str, field: usize, component: usize) -> bool {
+pub fn is_component_a_timestamp(
+    version: &str,
+    segment: &str,
+    field: usize,
+    component: usize,
+) -> bool {
     hl7_definitions::get_segment(version, segment)
         .and_then(|s| s.fields.get(field - 1))
         .and_then(|f| hl7_definitions::get_field(version, f.datatype))
         .and_then(|f| f.subfields.get(component - 1))
-        .map(|c| { c.datatype == "TS" || c.datatype == "DTM" || c.datatype == "DRT" })
+        .map(|c| c.datatype == "TS" || c.datatype == "DTM" || c.datatype == "DRT")
         .unwrap_or(false)
 }
 
@@ -141,4 +146,19 @@ pub fn describe_component(version: &str, segment: &str, field: usize, component:
                 .unwrap_or_else(|| "Unknown field".to_string())
         })
         .unwrap_or_else(|| "Unknown segment".to_string())
+}
+
+pub fn field_table_values(version: &str, segment: &str, field: usize) -> Option<Vec<String>> {
+    hl7_definitions::get_segment(version, segment)
+        .and_then(|s| s.fields.get(field))
+        .and_then(|f| f.table)
+        .and_then(|t| hl7_definitions::table_values(t as u16))
+        .map(|values| {
+            let mut values = values
+                .iter()
+                .map(|(code, _description)| code.to_string())
+                .collect::<Vec<String>>();
+            values.sort();
+            values
+        })
 }

@@ -3,9 +3,9 @@ use color_eyre::Result;
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId};
 use lsp_textdocument::TextDocuments;
 use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument};
-use lsp_types::request::{DocumentSymbolRequest, HoverRequest};
+use lsp_types::request::{Completion, DocumentSymbolRequest, HoverRequest};
 use lsp_types::{
-    ClientCapabilities, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    ClientCapabilities, CompletionOptions, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     HoverProviderCapability, OneOf, PositionEncodingKind, TextDocumentSyncCapability,
     TextDocumentSyncKind,
 };
@@ -13,12 +13,13 @@ use lsp_types::{InitializeParams, ServerCapabilities};
 use std::io::Write;
 use utils::build_response;
 
+mod completion;
 mod diagnostics;
 mod document_symbols;
 mod hover;
 pub mod spec;
 pub mod utils;
-pub mod validation;
+mod validation;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -67,6 +68,9 @@ fn main() -> Result<()> {
             label: Some("HL7 Document".to_string()),
             work_done_progress_options: Default::default(),
         })),
+        completion_provider: Some(CompletionOptions {
+            ..Default::default()
+        }),
         ..Default::default()
     })
     .expect("can to serialize server capabilities");
@@ -148,6 +152,25 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                     Err(ExtractError::MethodMismatch(req)) => req,
                 };
 
+                let req = match cast_request::<Completion>(req) {
+                    Ok((id, params)) => {
+                        tracing::trace!(id = ?id, "got Completion request");
+                        let resp = completion::handle_completion_request(params, &documents)
+                            .map_err(|e| {
+                                tracing::warn!("Failed to handle completion request: {e:?}");
+                                e
+                            });
+                        let resp = build_response(id, resp);
+                        connection
+                            .sender
+                            .send(Message::Response(resp))
+                            .expect("can send response");
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
                 tracing::warn!("unhandled request: {req:?}");
             }
             Message::Response(resp) => {
@@ -184,7 +207,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                         let errors = match hl7_parser::parse_message_with_lenient_newlines(text) {
                             Ok(message) => validation::validate_message(&message)
                                 .into_iter()
-                                .map(|e| e.to_diagnostic(text))
+                                .map(|e| e.into_diagnostic(text))
                                 .collect(),
                             Err(err) => vec![diagnostics::parse_error_to_diagnostic(text, err)],
                         };
@@ -217,4 +240,3 @@ where
 {
     req.extract(R::METHOD)
 }
-

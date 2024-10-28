@@ -12,7 +12,10 @@ pub fn validate_message(message: &Message, version: &str) -> Vec<ValidationError
                     continue;
                 }
                 if let Some(field_definition) = segment_definition.fields.get(fi) {
-                    if field_definition.datatype == "TS" || field_definition.datatype == "DTM" || field_definition.datatype == "DRT" {
+                    if field_definition.datatype == "TS"
+                        || field_definition.datatype == "DTM"
+                        || field_definition.datatype == "DRT"
+                    {
                         if let Err(e) = hl7_parser::timestamps::parse_timestamp(field.raw_value()) {
                             errors.push(ValidationError::new(
                                 ValidationCode::InvalidTimestamp,
