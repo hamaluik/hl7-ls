@@ -8,6 +8,22 @@ pub fn segment_description(version: &str, segment: &str) -> String {
         .unwrap_or_else(|| "Unknown segment".to_string())
 }
 
+pub fn is_field_a_timestamp(version: &str, segment: &str, field: usize) -> bool {
+    hl7_definitions::get_segment(version, segment)
+        .and_then(|s| s.fields.get(field - 1))
+        .map(|f| { f.datatype == "TS" || f.datatype == "DTM" || f.datatype == "DRT" })
+        .unwrap_or(false)
+}
+
+pub fn is_component_a_timestamp(version: &str, segment: &str, field: usize, component: usize) -> bool {
+    hl7_definitions::get_segment(version, segment)
+        .and_then(|s| s.fields.get(field - 1))
+        .and_then(|f| hl7_definitions::get_field(version, f.datatype))
+        .and_then(|f| f.subfields.get(component - 1))
+        .map(|c| { c.datatype == "TS" || c.datatype == "DTM" || c.datatype == "DRT" })
+        .unwrap_or(false)
+}
+
 pub fn describe_field(version: &str, segment: &str, field: usize) -> String {
     hl7_definitions::get_segment(version, segment)
         .map(|s| {

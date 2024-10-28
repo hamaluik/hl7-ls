@@ -3,6 +3,7 @@ use crate::{
     spec,
     utils::{position_to_offset, range_from_offsets},
 };
+use chrono::{DateTime, Local, Utc};
 use color_eyre::{
     eyre::{Context, ContextCompat},
     Result,
@@ -28,6 +29,7 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
     // format the hover text
     let mut hover_text = format!("`{location}`");
     let mut url = None;
+    let mut timestamp = None;
     if let Some(seg) = location.segment {
         let message_version = message
             .query("MSH.12")
@@ -85,12 +87,42 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
                         field = field.0,
                         component = component.0
                     ));
+
+                if spec::is_component_a_timestamp(message_version, seg.0, field.0, component.0) {
+                    timestamp = Some(match hl7_parser::timestamps::parse_timestamp(component.1.raw_value()) {
+                        Ok(ts) => {
+                            let ts_utc = ts.try_into()
+                                .map(|ts: DateTime<Utc>| ts.to_rfc2822())
+                                .unwrap_or_else(|e| format!("Failed to parse timestamp as UTC: {e:#}"));
+                            let ts_local = ts.try_into()
+                                .map(|ts: DateTime<Local>| ts.to_rfc2822())
+                                .unwrap_or_else(|e| format!("Failed to parse timestamp as local: {e:#}"));
+                            format!("  UTC: {ts_utc}\n  Local: {ts_local}")
+                        },
+                        Err(e) => format!("Invalid timestamp: {e:#}"),
+                    });
+                }
             } else {
                 url = Some(format!(
                         "https://hl7-definition.caristix.com/v2/HL7v{message_version}/Fields/{segment}.{field}",
                         segment = seg.0,
                         field = field.0
                     ));
+
+                if spec::is_field_a_timestamp(message_version, seg.0, field.0) {
+                    timestamp = Some(match hl7_parser::timestamps::parse_timestamp(field.1.raw_value()) {
+                        Ok(ts) => {
+                            let ts_utc = ts.try_into()
+                                .map(|ts: DateTime<Utc>| ts.to_rfc2822())
+                                .unwrap_or_else(|e| format!("Failed to parse timestamp as UTC: {e:#}"));
+                            let ts_local = ts.try_into()
+                                .map(|ts: DateTime<Local>| ts.to_rfc2822())
+                                .unwrap_or_else(|e| format!("Failed to parse timestamp as local: {e:#}"));
+                            format!("  UTC: {ts_utc}\n  Local: {ts_local}")
+                        },
+                        Err(e) => format!("Invalid timestamp: {e:#}"),
+                    });
+                }
             }
         } else {
             url = Some(format!(
@@ -99,8 +131,16 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
             ));
         }
     }
+
+    if url.is_some() || timestamp.is_some() {
+        hover_text.push_str("\n\n---");
+    }
+
+    if let Some(timestamp) = timestamp {
+        hover_text.push_str(format!("\nTimestamp:\n{timestamp}").as_str());
+    }
     if let Some(url) = url {
-        hover_text.push_str(format!("\n\nMore info: [{url}]({url})").as_str());
+        hover_text.push_str(format!("\nMore info: [{url}]({url})").as_str());
     }
 
     // figure out the most relevant hover range
