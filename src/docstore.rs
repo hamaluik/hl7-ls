@@ -1,3 +1,4 @@
+use hl7_parser::parser::ParseError;
 use lsp_types::Uri;
 use std::collections::HashMap;
 
@@ -10,11 +11,12 @@ impl DocStore {
     /// Update the document store with the given URI and text.
     ///
     /// Returns a list of errors encountered while parsing the document.
-    pub fn update(&mut self, uri: Uri, text: String) -> Vec<String> {
+    pub fn update(&mut self, uri: Uri, text: String) -> Vec<ParseError> {
         let mut result = Vec::default();
         if let Err(e) = hl7_parser::parse_message_with_lenient_newlines(text.as_str()) {
-            result.push(e.to_string());
+            result.push(e);
         }
+        // tracing::trace!(uri = ?uri, "updating document store");
         self.docs.insert(uri.clone(), text);
         result
     }

@@ -11,6 +11,7 @@ use lsp_types::{InitializeParams, ServerCapabilities};
 use std::io::Write;
 use utils::build_response;
 
+mod diagnostics;
 mod docstore;
 mod hover;
 pub mod spec;
@@ -33,16 +34,15 @@ fn main() -> Result<()> {
     tracing::info!("starting generic LSP server");
     let (connection, io_threads) = Connection::stdio();
 
-    // Run the server
     let (id, params) = connection.initialize_start()?;
-
     let init_params: InitializeParams = serde_json::from_value(params).unwrap();
+    tracing::info!(client_info = ?init_params.client_info, "client connected");
     let client_capabilities: ClientCapabilities = init_params.capabilities;
-    tracing::debug!("client capabilities: {client_capabilities:#?}");
 
     let client_supports_utf8_positions = client_capabilities
         .general
-        .and_then(|g| g.position_encodings)
+        .as_ref()
+        .and_then(|g| g.position_encodings.as_ref())
         .map(|p| p.contains(&PositionEncodingKind::UTF8))
         .unwrap_or(false);
     let encoding = if client_supports_utf8_positions {
@@ -56,6 +56,7 @@ fn main() -> Result<()> {
 
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
         position_encoding: Some(encoding),
+        // TODO: implement incremental sync
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         ..Default::default()
@@ -74,25 +75,7 @@ fn main() -> Result<()> {
         .initialize_finish(id, initialize_data)
         .wrap_err_with(|| "Failed to finish LSP initialisation")?;
 
-    // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
-    // let server_capabilities = serde_json::to_value(&ServerCapabilities {
-    //     position_encoding: Some(PositionEncodingKind::UTF8),
-    //     text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
-    //     hover_provider: Some(HoverProviderCapability::Simple(true)),
-    //     ..Default::default()
-    // })
-    // .expect("can to serialize server capabilities");
-    // let initialization_params = match connection.initialize(server_capabilities) {
-    //     Ok(it) => it,
-    //     Err(e) => {
-    //         if e.channel_is_disconnected() {
-    //             io_threads.join()?;
-    //         }
-    //         return Err(e.into());
-    //     }
-    // };
-
-    main_loop(connection)?;
+    main_loop(connection, client_capabilities)?;
     io_threads.join()?;
 
     // Shut down gracefully.
@@ -100,8 +83,16 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn main_loop(connection: Connection) -> Result<()> {
+fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) -> Result<()> {
     let mut doc_store = docstore::DocStore::default();
+
+    let diagnostics_enabled = client_capabilities
+        .text_document
+        .as_ref()
+        .map(|tdc| {
+            tdc.publish_diagnostics.is_some()
+        })
+        .unwrap_or(false);
 
     tracing::debug!("starting main loop");
     for msg in &connection.receiver {
@@ -137,7 +128,23 @@ fn main_loop(connection: Connection) -> Result<()> {
             Message::Notification(not) => {
                 let not = match cast_notification::<DidOpenTextDocument>(not) {
                     Ok(params) => {
-                        doc_store.update(params.text_document.uri, params.text_document.text);
+                        let errors = doc_store
+                            .update(params.text_document.uri.clone(), params.text_document.text);
+                        if !errors.is_empty() {
+                            tracing::warn!(errors = ?errors, "Failed to parse the document");
+
+                            if diagnostics_enabled {
+                                diagnostics::publish_parse_error_diagnostics(
+                                    &connection,
+                                    &doc_store,
+                                    params.text_document.uri,
+                                    errors,
+                                    params.text_document.version,
+                                );
+                            }
+                        } else if diagnostics_enabled {
+                            diagnostics::clear_diagnostics(&connection, params.text_document.uri);
+                        }
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
@@ -152,10 +159,26 @@ fn main_loop(connection: Connection) -> Result<()> {
                                 len = params.content_changes.len()
                             );
                         }
-                        doc_store.update(
-                            params.text_document.uri,
+                        // TODO: handle multiple content changes
+                        let errors = doc_store.update(
+                            params.text_document.uri.clone(),
                             params.content_changes[0].text.clone(),
                         );
+                        if !errors.is_empty() {
+                            tracing::warn!(errors = ?errors, "Failed to parse the document");
+
+                            if diagnostics_enabled {
+                                diagnostics::publish_parse_error_diagnostics(
+                                    &connection,
+                                    &doc_store,
+                                    params.text_document.uri,
+                                    errors,
+                                    params.text_document.version,
+                                );
+                            }
+                        } else if diagnostics_enabled {
+                            diagnostics::clear_diagnostics(&connection, params.text_document.uri);
+                        }
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),

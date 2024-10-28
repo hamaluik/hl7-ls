@@ -154,16 +154,70 @@ mod tests {
     fn can_calculate_position() {
         let text = "abc\r\ndef\r\nghi";
 
-        assert_eq!(position_from_offset(text, 0), Position { line: 0, character: 0 });
-        assert_eq!(position_from_offset(text, 1), Position { line: 0, character: 1 });
-        assert_eq!(position_from_offset(text, 2), Position { line: 0, character: 2 });
+        assert_eq!(
+            position_from_offset(text, 0),
+            Position {
+                line: 0,
+                character: 0
+            }
+        );
+        assert_eq!(
+            position_from_offset(text, 1),
+            Position {
+                line: 0,
+                character: 1
+            }
+        );
+        assert_eq!(
+            position_from_offset(text, 2),
+            Position {
+                line: 0,
+                character: 2
+            }
+        );
 
-        assert_eq!(position_from_offset(text, 5), Position { line: 1, character: 0 });
-        assert_eq!(position_from_offset(text, 6), Position { line: 1, character: 1 });
-        assert_eq!(position_from_offset(text, 7), Position { line: 1, character: 2 });
+        assert_eq!(
+            position_from_offset(text, 5),
+            Position {
+                line: 1,
+                character: 0
+            }
+        );
+        assert_eq!(
+            position_from_offset(text, 6),
+            Position {
+                line: 1,
+                character: 1
+            }
+        );
+        assert_eq!(
+            position_from_offset(text, 7),
+            Position {
+                line: 1,
+                character: 2
+            }
+        );
 
-        assert_eq!(position_from_offset(text, 10), Position { line: 2, character: 0 });
-        assert_eq!(position_from_offset(text, 11), Position { line: 2, character: 1 });
-        assert_eq!(position_from_offset(text, 12), Position { line: 2, character: 2 });
+        assert_eq!(
+            position_from_offset(text, 10),
+            Position {
+                line: 2,
+                character: 0
+            }
+        );
+        assert_eq!(
+            position_from_offset(text, 11),
+            Position {
+                line: 2,
+                character: 1
+            }
+        );
+        assert_eq!(
+            position_from_offset(text, 12),
+            Position {
+                line: 2,
+                character: 2
+            }
+        );
     }
 }

@@ -150,4 +150,3 @@ pub static HL7_FIELD_DESCRIPTION: phf::Map<&'static str, phf::Map<u32, &'static 
         52u32 => "Other Healthcare Provider",
     }
 };
-

@@ -1,7 +1,7 @@
 use crate::{
     docstore::DocStore,
-    utils::{position_to_offset, range_from_offsets},
     spec,
+    utils::{position_to_offset, range_from_offsets},
 };
 use color_eyre::{
     eyre::{Context, ContextCompat},
@@ -29,14 +29,16 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
     let mut hover_text = format!("`{location}`");
     if let Some(seg) = location.segment {
         let description = spec::HL7_SEGMENT_DESCRIPTION
-            .get(seg.0).copied()
+            .get(seg.0)
+            .copied()
             .unwrap_or("No description found");
         hover_text.push_str(format!(":\n  {segment}: {description}", segment = seg.0).as_str());
 
         if let Some(field) = location.field {
             let field_description = spec::HL7_FIELD_DESCRIPTION
                 .get(seg.0)
-                .and_then(|m| m.get(&(field.0 as u32))).copied()
+                .and_then(|m| m.get(&(field.0 as u32)))
+                .copied()
                 .unwrap_or("No description found");
             hover_text.push_str(
                 format!(
