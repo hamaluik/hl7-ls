@@ -16,7 +16,7 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
         .get(&uri)
         .wrap_err_with(|| format!("no document found for uri: {:?}", uri))?;
     let position = params.text_document_position_params.position;
-    let offset = position_to_offset(&text, position.line, position.character)
+    let offset = position_to_offset(text, position.line, position.character)
         .wrap_err_with(|| "Failed to convert position to offset")?;
 
     let message = parse_message_with_lenient_newlines(text)
@@ -29,16 +29,14 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
     let mut hover_text = format!("`{location}`");
     if let Some(seg) = location.segment {
         let description = spec::HL7_SEGMENT_DESCRIPTION
-            .get(seg.0)
-            .map(|s| *s)
+            .get(seg.0).copied()
             .unwrap_or("No description found");
         hover_text.push_str(format!(":\n  {segment}: {description}", segment = seg.0).as_str());
 
         if let Some(field) = location.field {
             let field_description = spec::HL7_FIELD_DESCRIPTION
                 .get(seg.0)
-                .and_then(|m| m.get(&(field.0 as u32)))
-                .map(|s| *s)
+                .and_then(|m| m.get(&(field.0 as u32))).copied()
                 .unwrap_or("No description found");
             hover_text.push_str(
                 format!(

@@ -4,7 +4,8 @@ use lsp_server::{Connection, ExtractError, Message, Notification, Request, Reque
 use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument};
 use lsp_types::request::HoverRequest;
 use lsp_types::{
-    HoverProviderCapability, PositionEncodingKind, TextDocumentSyncCapability, TextDocumentSyncKind,
+    ClientCapabilities, HoverProviderCapability, PositionEncodingKind, TextDocumentSyncCapability,
+    TextDocumentSyncKind,
 };
 use lsp_types::{InitializeParams, ServerCapabilities};
 use std::io::Write;
@@ -12,8 +13,8 @@ use utils::build_response;
 
 mod docstore;
 mod hover;
-pub mod utils;
 pub mod spec;
+pub mod utils;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -24,7 +25,7 @@ fn main() -> Result<()> {
     eprintln!("Logging to {}", log_path.display());
     writeln!(log_file, "---")?;
     tracing_subscriber::fmt()
-        .with_ansi(false)
+        .with_ansi(true)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_writer(log_file)
         .init();
@@ -32,24 +33,66 @@ fn main() -> Result<()> {
     tracing::info!("starting generic LSP server");
     let (connection, io_threads) = Connection::stdio();
 
-    // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
+    // Run the server
+    let (id, params) = connection.initialize_start()?;
+
+    let init_params: InitializeParams = serde_json::from_value(params).unwrap();
+    let client_capabilities: ClientCapabilities = init_params.capabilities;
+    tracing::debug!("client capabilities: {client_capabilities:#?}");
+
+    let client_supports_utf8_positions = client_capabilities
+        .general
+        .and_then(|g| g.position_encodings)
+        .map(|p| p.contains(&PositionEncodingKind::UTF8))
+        .unwrap_or(false);
+    let encoding = if client_supports_utf8_positions {
+        PositionEncodingKind::UTF8
+    } else {
+        tracing::warn!(
+            "Client does not support UTF-8 position encoding, unicode stuff will be broken"
+        );
+        PositionEncodingKind::UTF16
+    };
+
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
-        position_encoding: Some(PositionEncodingKind::UTF8),
+        position_encoding: Some(encoding),
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         ..Default::default()
     })
     .expect("can to serialize server capabilities");
-    let initialization_params = match connection.initialize(server_capabilities) {
-        Ok(it) => it,
-        Err(e) => {
-            if e.channel_is_disconnected() {
-                io_threads.join()?;
-            }
-            return Err(e.into());
+
+    let initialize_data = serde_json::json!({
+        "capabilities": server_capabilities,
+        "serverInfo": {
+            "name": "hl7-ls",
+            "version": env!("CARGO_PKG_VERSION")
         }
-    };
-    main_loop(connection, initialization_params)?;
+    });
+
+    connection
+        .initialize_finish(id, initialize_data)
+        .wrap_err_with(|| "Failed to finish LSP initialisation")?;
+
+    // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
+    // let server_capabilities = serde_json::to_value(&ServerCapabilities {
+    //     position_encoding: Some(PositionEncodingKind::UTF8),
+    //     text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+    //     hover_provider: Some(HoverProviderCapability::Simple(true)),
+    //     ..Default::default()
+    // })
+    // .expect("can to serialize server capabilities");
+    // let initialization_params = match connection.initialize(server_capabilities) {
+    //     Ok(it) => it,
+    //     Err(e) => {
+    //         if e.channel_is_disconnected() {
+    //             io_threads.join()?;
+    //         }
+    //         return Err(e.into());
+    //     }
+    // };
+
+    main_loop(connection)?;
     io_threads.join()?;
 
     // Shut down gracefully.
@@ -57,11 +100,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn main_loop(connection: Connection, params: serde_json::Value) -> Result<()> {
+fn main_loop(connection: Connection) -> Result<()> {
     let mut doc_store = docstore::DocStore::default();
 
-    let _params: InitializeParams =
-        serde_json::from_value(params).expect("can to deserialize initialization params");
     tracing::debug!("starting main loop");
     for msg in &connection.receiver {
         match msg {
@@ -78,7 +119,10 @@ fn main_loop(connection: Connection, params: serde_json::Value) -> Result<()> {
                             e
                         });
                         let resp = build_response(id, resp);
-                        connection.sender.send(Message::Response(resp)).expect("can send response");
+                        connection
+                            .sender
+                            .send(Message::Response(resp))
+                            .expect("can send response");
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
