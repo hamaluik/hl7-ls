@@ -6,10 +6,11 @@ edition = "2021"
 [dependencies]
 chrono = "0.4.38"
 color-eyre = "0.6.3"
+hl7-definitions = { git = "https://github.com/hamaluik/hl7-definitions.git", version = "0.0.2" }
 hl7-parser = { git = "https://github.com/hamaluik/hl7-parser.git", branch = "v030", features = ["chrono"] }
 lsp-server = "0.7.7"
 lsp-types = "0.97.0"
-phf = { version = "0.11.2", features = ["macros"] }
+# phf = { version = "0.11.2", features = ["macros"] }
 serde = { version = "1.0.213", features = ["derive"] }
 serde_json = "1.0.132"
 tracing = "0.1.40"

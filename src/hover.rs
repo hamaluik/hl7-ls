@@ -28,18 +28,19 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
     // format the hover text
     let mut hover_text = format!("`{location}`");
     if let Some(seg) = location.segment {
-        let description = spec::HL7_SEGMENT_DESCRIPTION
-            .get(seg.0)
-            .copied()
-            .unwrap_or("No description found");
+        let message_version = message
+            .query("MSH.12")
+            .map(|v| v.raw_value())
+            .unwrap_or("2.7.1");
+        if !spec::is_valid_version(message_version) {
+            hover_text.push_str(format!("\n\nUnknown HL7 version `{}`", message_version).as_str());
+        }
+
+        let description = spec::segment_description(message_version, seg.0);
         hover_text.push_str(format!(":\n  {segment}: {description}", segment = seg.0).as_str());
 
         if let Some(field) = location.field {
-            let field_description = spec::HL7_FIELD_DESCRIPTION
-                .get(seg.0)
-                .and_then(|m| m.get(&(field.0 as u32)))
-                .copied()
-                .unwrap_or("No description found");
+            let field_description = spec::describe_field(message_version, seg.0, field.0);
             hover_text.push_str(
                 format!(
                     "\n  {segment}.{field}: {field_description}",
@@ -48,6 +49,20 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
                 )
                 .as_str(),
             );
+
+            if let Some(component) = location.component {
+                let component_description =
+                    spec::describe_component(message_version, seg.0, field.0, component.0);
+                hover_text.push_str(
+                    format!(
+                        "\n  {segment}.{field}.{component}: {component_description}",
+                        segment = seg.0,
+                        field = field.0,
+                        component = component.0,
+                    )
+                    .as_str(),
+                );
+            }
         }
     }
 

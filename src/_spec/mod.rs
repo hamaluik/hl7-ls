@@ -1,5 +1,7 @@
 use phf::phf_map;
 
+pub mod data_types;
+
 pub static HL7_SEGMENT_DESCRIPTION: phf::Map<&'static str, &'static str> = phf_map! {
     "MSH" => "Message Header",
     "EVN" => "Event Type",

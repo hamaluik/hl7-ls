@@ -59,6 +59,10 @@ fn main() -> Result<()> {
         // TODO: implement incremental sync
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
+        // document_symbol_provider: Some(OneOf::Right(lsp_types::DocumentSymbolOptions {
+        //     label: Some("HL7 Document".to_string()),
+        //     work_done_progress_options: Default::default(),
+        // })),
         ..Default::default()
     })
     .expect("can to serialize server capabilities");
@@ -89,9 +93,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
     let diagnostics_enabled = client_capabilities
         .text_document
         .as_ref()
-        .map(|tdc| {
-            tdc.publish_diagnostics.is_some()
-        })
+        .map(|tdc| tdc.publish_diagnostics.is_some())
         .unwrap_or(false);
 
     tracing::debug!("starting main loop");
