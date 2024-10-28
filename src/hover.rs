@@ -53,11 +53,10 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
                 "".to_string()
             };
 
-            let has_components = has_repeats
-                && location
-                    .repeat
-                    .map(|r| r.1.has_components())
-                    .unwrap_or(false);
+            let has_components = location
+                .repeat
+                .map(|r| r.1.has_components())
+                .unwrap_or(false);
 
             hover_text.push_str(
                 format!(
@@ -89,18 +88,26 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
                     ));
 
                 if spec::is_component_a_timestamp(message_version, seg.0, field.0, component.0) {
-                    timestamp = Some(match hl7_parser::timestamps::parse_timestamp(component.1.raw_value()) {
-                        Ok(ts) => {
-                            let ts_utc = ts.try_into()
-                                .map(|ts: DateTime<Utc>| ts.to_rfc2822())
-                                .unwrap_or_else(|e| format!("Failed to parse timestamp as UTC: {e:#}"));
-                            let ts_local = ts.try_into()
-                                .map(|ts: DateTime<Local>| ts.to_rfc2822())
-                                .unwrap_or_else(|e| format!("Failed to parse timestamp as local: {e:#}"));
-                            format!("  UTC: {ts_utc}\n  Local: {ts_local}")
+                    timestamp = Some(
+                        match hl7_parser::timestamps::parse_timestamp(component.1.raw_value()) {
+                            Ok(ts) => {
+                                let ts_utc = ts
+                                    .try_into()
+                                    .map(|ts: DateTime<Utc>| ts.to_rfc2822())
+                                    .unwrap_or_else(|e| {
+                                        format!("Failed to parse timestamp as UTC: {e:#}")
+                                    });
+                                let ts_local = ts
+                                    .try_into()
+                                    .map(|ts: DateTime<Local>| ts.to_rfc2822())
+                                    .unwrap_or_else(|e| {
+                                        format!("Failed to parse timestamp as local: {e:#}")
+                                    });
+                                format!("  UTC: {ts_utc}\n  Local: {ts_local}")
+                            }
+                            Err(e) => format!("Invalid timestamp: {e:#}"),
                         },
-                        Err(e) => format!("Invalid timestamp: {e:#}"),
-                    });
+                    );
                 }
             } else {
                 url = Some(format!(
@@ -110,18 +117,26 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
                     ));
 
                 if spec::is_field_a_timestamp(message_version, seg.0, field.0) {
-                    timestamp = Some(match hl7_parser::timestamps::parse_timestamp(field.1.raw_value()) {
-                        Ok(ts) => {
-                            let ts_utc = ts.try_into()
-                                .map(|ts: DateTime<Utc>| ts.to_rfc2822())
-                                .unwrap_or_else(|e| format!("Failed to parse timestamp as UTC: {e:#}"));
-                            let ts_local = ts.try_into()
-                                .map(|ts: DateTime<Local>| ts.to_rfc2822())
-                                .unwrap_or_else(|e| format!("Failed to parse timestamp as local: {e:#}"));
-                            format!("  UTC: {ts_utc}\n  Local: {ts_local}")
+                    timestamp = Some(
+                        match hl7_parser::timestamps::parse_timestamp(field.1.raw_value()) {
+                            Ok(ts) => {
+                                let ts_utc = ts
+                                    .try_into()
+                                    .map(|ts: DateTime<Utc>| ts.to_rfc2822())
+                                    .unwrap_or_else(|e| {
+                                        format!("Failed to parse timestamp as UTC: {e:#}")
+                                    });
+                                let ts_local = ts
+                                    .try_into()
+                                    .map(|ts: DateTime<Local>| ts.to_rfc2822())
+                                    .unwrap_or_else(|e| {
+                                        format!("Failed to parse timestamp as local: {e:#}")
+                                    });
+                                format!("  UTC: {ts_utc}\n  Local: {ts_local}")
+                            }
+                            Err(e) => format!("Invalid timestamp: {e:#}"),
                         },
-                        Err(e) => format!("Invalid timestamp: {e:#}"),
-                    });
+                    );
                 }
             }
         } else {
