@@ -27,6 +27,7 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
 
     // format the hover text
     let mut hover_text = format!("`{location}`");
+    let mut url = None;
     if let Some(seg) = location.segment {
         let message_version = message
             .query("MSH.12")
@@ -62,8 +63,30 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
                     )
                     .as_str(),
                 );
+
+                url = Some(format!(
+                    "https://hl7-definition.caristix.com/v2/HL7v{message_version}/Fields/{segment}.{field}.{component}",
+                    segment = seg.0,
+                    field = field.0,
+                    component = component.0
+                ));
             }
+            else {
+                url = Some(format!(
+                    "https://hl7-definition.caristix.com/v2/HL7v{message_version}/Fields/{segment}.{field}",
+                    segment = seg.0,
+                    field = field.0
+                ));
+            }
+        } else {
+            url = Some(format!(
+                "https://hl7-definition.caristix.com/v2/HL7v{message_version}/Segments/{segment}",
+                segment = seg.0
+            ));
         }
+    }
+    if let Some(url) = url {
+        hover_text.push_str(format!("\n\nMore info: [{url}]({url})").as_str());
     }
 
     // figure out the most relevant hover range
