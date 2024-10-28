@@ -16,6 +16,7 @@ mod docstore;
 mod hover;
 pub mod spec;
 pub mod utils;
+pub mod validation;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -132,20 +133,21 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                     Ok(params) => {
                         let errors = doc_store
                             .update(params.text_document.uri.clone(), params.text_document.text);
-                        if !errors.is_empty() {
-                            tracing::warn!(errors = ?errors, "Failed to parse the document");
 
-                            if diagnostics_enabled {
+                        if diagnostics_enabled {
+                            if errors.is_empty() {
+                                diagnostics::clear_diagnostics(
+                                    &connection,
+                                    params.text_document.uri,
+                                );
+                            } else {
                                 diagnostics::publish_parse_error_diagnostics(
                                     &connection,
-                                    &doc_store,
                                     params.text_document.uri,
                                     errors,
                                     params.text_document.version,
                                 );
                             }
-                        } else if diagnostics_enabled {
-                            diagnostics::clear_diagnostics(&connection, params.text_document.uri);
                         }
                         continue;
                     }
@@ -166,20 +168,21 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                             params.text_document.uri.clone(),
                             params.content_changes[0].text.clone(),
                         );
-                        if !errors.is_empty() {
-                            tracing::warn!(errors = ?errors, "Failed to parse the document");
 
-                            if diagnostics_enabled {
+                        if diagnostics_enabled {
+                            if errors.is_empty() {
+                                diagnostics::clear_diagnostics(
+                                    &connection,
+                                    params.text_document.uri,
+                                );
+                            } else {
                                 diagnostics::publish_parse_error_diagnostics(
                                     &connection,
-                                    &doc_store,
                                     params.text_document.uri,
                                     errors,
                                     params.text_document.version,
                                 );
                             }
-                        } else if diagnostics_enabled {
-                            diagnostics::clear_diagnostics(&connection, params.text_document.uri);
                         }
                         continue;
                     }

@@ -1,5 +1,4 @@
-use hl7_parser::parser::ParseError;
-use lsp_types::Uri;
+use lsp_types::{Diagnostic, Uri};
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -11,12 +10,23 @@ impl DocStore {
     /// Update the document store with the given URI and text.
     ///
     /// Returns a list of errors encountered while parsing the document.
-    pub fn update(&mut self, uri: Uri, text: String) -> Vec<ParseError> {
+    pub fn update(&mut self, uri: Uri, text: String) -> Vec<Diagnostic> {
         let mut result = Vec::default();
-        if let Err(e) = hl7_parser::parse_message_with_lenient_newlines(text.as_str()) {
-            result.push(e);
+        match hl7_parser::parse_message_with_lenient_newlines(text.as_str()) {
+            Ok(message) => {
+                let errors = crate::validation::validate_message(&message);
+                for error in errors {
+                    result.push(error.to_diagnostic(text.as_str()));
+                }
+            }
+            Err(e) => {
+                result.push(crate::diagnostics::parse_error_to_diagnostic(
+                    text.as_str(),
+                    e,
+                ));
+            }
         }
-        // tracing::trace!(uri = ?uri, "updating document store");
+
         self.docs.insert(uri.clone(), text);
         result
     }

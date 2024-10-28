@@ -65,6 +65,11 @@ pub fn describe_field(version: &str, segment: &str, field: usize) -> String {
         .unwrap_or_else(|| "Unknown segment".to_string())
 }
 
-pub fn describe_component(_version: &str, _segment: &str, _field: usize, _component: usize) -> String {
+pub fn describe_component(
+    _version: &str,
+    _segment: &str,
+    _field: usize,
+    _component: usize,
+) -> String {
     "Not implemented yet in the LSP! glhfdd".to_string()
 }
