@@ -1,18 +1,19 @@
 use color_eyre::eyre::Context;
 use color_eyre::Result;
-use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId};
+use lsp_server::{Connection, ExtractError, Message, Request, RequestId};
+use lsp_textdocument::TextDocuments;
 use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument};
 use lsp_types::request::{DocumentSymbolRequest, HoverRequest};
 use lsp_types::{
-    ClientCapabilities, HoverProviderCapability, OneOf, PositionEncodingKind,
-    TextDocumentSyncCapability, TextDocumentSyncKind,
+    ClientCapabilities, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    HoverProviderCapability, OneOf, PositionEncodingKind, TextDocumentSyncCapability,
+    TextDocumentSyncKind,
 };
 use lsp_types::{InitializeParams, ServerCapabilities};
 use std::io::Write;
 use utils::build_response;
 
 mod diagnostics;
-mod docstore;
 mod document_symbols;
 mod hover;
 pub mod spec;
@@ -58,8 +59,9 @@ fn main() -> Result<()> {
 
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
         position_encoding: Some(encoding),
-        // TODO: implement incremental sync
-        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+        text_document_sync: Some(TextDocumentSyncCapability::Kind(
+            TextDocumentSyncKind::INCREMENTAL,
+        )),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         document_symbol_provider: Some(OneOf::Right(lsp_types::DocumentSymbolOptions {
             label: Some("HL7 Document".to_string()),
@@ -90,7 +92,7 @@ fn main() -> Result<()> {
 }
 
 fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) -> Result<()> {
-    let mut doc_store = docstore::DocStore::default();
+    let mut documents = TextDocuments::new();
 
     let diagnostics_enabled = client_capabilities
         .text_document
@@ -109,7 +111,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                 let req = match cast_request::<HoverRequest>(req) {
                     Ok((id, params)) => {
                         tracing::trace!(id = ?id, "got Hover request");
-                        let resp = hover::handle_hover_request(params, &doc_store).map_err(|e| {
+                        let resp = hover::handle_hover_request(params, &documents).map_err(|e| {
                             tracing::warn!("Failed to handle hover request: {e:?}");
                             e
                         });
@@ -128,7 +130,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                     Ok((id, params)) => {
                         tracing::trace!(id = ?id, "got DocumentSymbol request");
                         let resp =
-                            document_symbols::handle_document_symbols_request(params, &doc_store)
+                            document_symbols::handle_document_symbols_request(params, &documents)
                                 .map_err(|e| {
                                     tracing::warn!(
                                         "Failed to handle document symbols request: {e:?}"
@@ -152,68 +154,56 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                 tracing::warn!(response = ?resp, "got response from server??");
             }
             Message::Notification(not) => {
-                let not = match cast_notification::<DidOpenTextDocument>(not) {
-                    Ok(params) => {
-                        let errors = doc_store
-                            .update(params.text_document.uri.clone(), params.text_document.text);
-
-                        if diagnostics_enabled {
-                            if errors.is_empty() {
-                                diagnostics::clear_diagnostics(
-                                    &connection,
-                                    params.text_document.uri,
-                                );
-                            } else {
-                                diagnostics::publish_parse_error_diagnostics(
-                                    &connection,
-                                    params.text_document.uri,
-                                    errors,
-                                    params.text_document.version,
-                                );
-                            }
-                        }
+                if documents.listen(not.method.as_str(), &not.params) {
+                    if !diagnostics_enabled {
                         continue;
                     }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(not)) => not,
-                };
 
-                let not = match cast_notification::<DidChangeTextDocument>(not) {
-                    Ok(params) => {
-                        if params.content_changes.len() != 1 {
-                            panic!(
-                                "expected exactly one content change, got {len}",
-                                len = params.content_changes.len()
+                    // document was updated, update diagnostics
+                    // first, extract the uri
+                    let (uri, version) = match not.method.as_str() {
+                        <DidOpenTextDocument as lsp_types::notification::Notification>::METHOD => {
+                            let params: DidOpenTextDocumentParams = serde_json::from_value(not.params.clone())
+                                .expect("Expect receive DidOpenTextDocumentParams");
+                            let text_document = params.text_document;
+                            (Some(text_document.uri), Some(text_document.version))
+                        },
+                        <DidChangeTextDocument as lsp_types::notification::Notification>::METHOD => {
+                            let params: DidChangeTextDocumentParams = serde_json::from_value(not.params.clone())
+                                .expect("Expect receive DidChangeTextDocumentParams");
+                            let text_document = params.text_document;
+                            (Some(text_document.uri), Some(text_document.version))
+                        },
+                        _ => (None, None),
+                    };
+
+                    let text = uri
+                        .as_ref()
+                        .and_then(|uri| documents.get_document_content(uri, None));
+                    if let Some(text) = text {
+                        let errors = match hl7_parser::parse_message_with_lenient_newlines(text) {
+                            Ok(message) => validation::validate_message(&message)
+                                .into_iter()
+                                .map(|e| e.to_diagnostic(text))
+                                .collect(),
+                            Err(err) => vec![diagnostics::parse_error_to_diagnostic(text, err)],
+                        };
+                        if errors.is_empty() {
+                            diagnostics::clear_diagnostics(&connection, uri.expect("document uri"));
+                        } else {
+                            diagnostics::publish_parse_error_diagnostics(
+                                &connection,
+                                uri.expect("document uri"),
+                                errors,
+                                version,
                             );
                         }
-                        // TODO: handle multiple content changes
-                        let errors = doc_store.update(
-                            params.text_document.uri.clone(),
-                            params.content_changes[0].text.clone(),
-                        );
-
-                        if diagnostics_enabled {
-                            if errors.is_empty() {
-                                diagnostics::clear_diagnostics(
-                                    &connection,
-                                    params.text_document.uri,
-                                );
-                            } else {
-                                diagnostics::publish_parse_error_diagnostics(
-                                    &connection,
-                                    params.text_document.uri,
-                                    errors,
-                                    params.text_document.version,
-                                );
-                            }
-                        }
-                        continue;
+                    } else {
+                        diagnostics::clear_diagnostics(&connection, uri.expect("document uri"));
                     }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(not)) => not,
-                };
-
-                tracing::warn!("unhandled notification: {not:?}");
+                } else {
+                    tracing::warn!("unhandled notification: {not:?}");
+                }
             }
         }
     }
@@ -228,10 +218,3 @@ where
     req.extract(R::METHOD)
 }
 
-fn cast_notification<N>(not: Notification) -> Result<N::Params, ExtractError<Notification>>
-where
-    N: lsp_types::notification::Notification,
-    N::Params: serde::de::DeserializeOwned,
-{
-    not.extract(N::METHOD)
-}

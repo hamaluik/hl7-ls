@@ -1,5 +1,4 @@
 use crate::{
-    docstore::DocStore,
     spec,
     utils::{position_to_offset, range_from_offsets},
 };
@@ -9,12 +8,13 @@ use color_eyre::{
     Result,
 };
 use hl7_parser::parse_message_with_lenient_newlines;
+use lsp_textdocument::TextDocuments;
 use lsp_types::{Hover, HoverContents, HoverParams, MarkedString};
 
-pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result<Hover> {
+pub fn handle_hover_request(params: HoverParams, documents: &TextDocuments) -> Result<Hover> {
     let uri = params.text_document_position_params.text_document.uri;
-    let text = doc_store
-        .get(&uri)
+    let text = documents
+        .get_document_content(&uri, None)
         .wrap_err_with(|| format!("no document found for uri: {:?}", uri))?;
     let position = params.text_document_position_params.position;
     let offset = position_to_offset(text, position.line, position.character)
@@ -103,7 +103,7 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
                                     .unwrap_or_else(|e| {
                                         format!("Failed to parse timestamp as local: {e:#}")
                                     });
-                                format!("  UTC: {ts_utc}\n  Local: {ts_local}")
+                                format!("  UTC: `{ts_utc}`\n  Local: `{ts_local}`")
                             }
                             Err(e) => format!("Invalid timestamp: {e:#}"),
                         },
@@ -132,7 +132,7 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
                                     .unwrap_or_else(|e| {
                                         format!("Failed to parse timestamp as local: {e:#}")
                                     });
-                                format!("  UTC: {ts_utc}\n  Local: {ts_local}")
+                                format!("  UTC: `{ts_utc}`\n  Local: `{ts_local}`")
                             }
                             Err(e) => format!("Invalid timestamp: {e:#}"),
                         },
@@ -152,10 +152,10 @@ pub fn handle_hover_request(params: HoverParams, doc_store: &DocStore) -> Result
     }
 
     if let Some(timestamp) = timestamp {
-        hover_text.push_str(format!("\nTimestamp:\n{timestamp}").as_str());
+        hover_text.push_str(format!("\n\n**Timestamp**:\n{timestamp}").as_str());
     }
     if let Some(url) = url {
-        hover_text.push_str(format!("\nMore info: [{url}]({url})").as_str());
+        hover_text.push_str(format!("\n\n**More info**: [{url}]({url})").as_str());
     }
 
     // figure out the most relevant hover range

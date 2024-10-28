@@ -1,4 +1,4 @@
-use crate::{docstore::DocStore, spec, utils::std_range_to_lsp_range};
+use crate::{spec, utils::std_range_to_lsp_range};
 use color_eyre::{
     eyre::{Context, ContextCompat},
     Result,
@@ -7,15 +7,15 @@ use hl7_parser::{
     message::{Field, Repeat, Segment},
     Message,
 };
+use lsp_textdocument::TextDocuments;
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
 
 pub fn handle_document_symbols_request(
     params: DocumentSymbolParams,
-    doc_store: &DocStore,
+    documents: &TextDocuments,
 ) -> Result<Vec<DocumentSymbol>> {
     let uri = params.text_document.uri;
-    let text = doc_store
-        .get(&uri)
+    let text = documents.get_document_content(&uri, None)
         .wrap_err_with(|| format!("no document found for uri: {uri:?}"))?;
 
     let message = hl7_parser::parse_message_with_lenient_newlines(text)

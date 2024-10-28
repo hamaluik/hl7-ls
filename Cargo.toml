@@ -9,6 +9,7 @@ color-eyre = "0.6.3"
 hl7-definitions = { git = "https://github.com/hamaluik/hl7-definitions.git", version = "0.0.2" }
 hl7-parser = { git = "https://github.com/hamaluik/hl7-parser.git", branch = "v030", features = ["chrono"] }
 lsp-server = "0.7.7"
+lsp-textdocument = "0.4.0"
 lsp-types = "0.97.0"
 # phf = { version = "0.11.2", features = ["macros"] }
 serde = { version = "1.0.213", features = ["derive"] }

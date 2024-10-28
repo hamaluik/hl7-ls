@@ -196,6 +196,7 @@ dependencies = [
  "hl7-definitions",
  "hl7-parser",
  "lsp-server",
+ "lsp-textdocument",
  "lsp-types",
  "serde",
  "serde_json",
@@ -284,6 +285,16 @@ dependencies = [
  "crossbeam-channel",
  "log",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lsp-textdocument"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8dc223af95101fe950a871d4d567b6f98a1ecfcee5861f4b57644581aaa980d"
+dependencies = [
+ "lsp-types",
  "serde_json",
 ]
 

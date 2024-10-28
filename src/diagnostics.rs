@@ -48,12 +48,12 @@ pub fn publish_parse_error_diagnostics(
     connection: &Connection,
     uri: Uri,
     diagnostics: Vec<Diagnostic>,
-    version: i32,
+    version: Option<i32>,
 ) {
     let publish_diagnostics = lsp_types::PublishDiagnosticsParams {
         uri,
         diagnostics,
-        version: Some(version),
+        version,
     };
     connection
         .sender
