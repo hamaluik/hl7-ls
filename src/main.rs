@@ -1,18 +1,25 @@
 use color_eyre::eyre::Context;
 use color_eyre::Result;
-use lsp_server::{Connection, ExtractError, Message, Request, RequestId};
+use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError};
 use lsp_textdocument::TextDocuments;
 use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument};
-use lsp_types::request::{Completion, DocumentSymbolRequest, HoverRequest};
+use lsp_types::request::{
+    ApplyWorkspaceEdit, CodeActionRequest, CodeLensRequest, Completion, DocumentSymbolRequest,
+    ExecuteCommand, HoverRequest, Request as LspRequest,
+};
 use lsp_types::{
-    ClientCapabilities, CompletionOptions, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    HoverProviderCapability, OneOf, PositionEncodingKind, TextDocumentSyncCapability,
-    TextDocumentSyncKind,
+    ApplyWorkspaceEditParams, ClientCapabilities, CodeActionOptions, CodeActionProviderCapability,
+    CodeLensOptions, CompletionOptions, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    ExecuteCommandOptions, HoverProviderCapability, OneOf, PositionEncodingKind,
+    TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 use lsp_types::{InitializeParams, ServerCapabilities};
 use std::io::Write;
 use utils::build_response;
 
+mod code_actions;
+mod codelens;
+mod commands;
 mod completion;
 mod diagnostics;
 mod document_symbols;
@@ -71,6 +78,17 @@ fn main() -> Result<()> {
         completion_provider: Some(CompletionOptions {
             ..Default::default()
         }),
+        code_lens_provider: Some(CodeLensOptions {
+            resolve_provider: Some(false),
+        }),
+        code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
+            code_action_kinds: Some(vec![lsp_types::CodeActionKind::QUICKFIX]),
+            ..Default::default()
+        })),
+        execute_command_provider: Some(ExecuteCommandOptions {
+            commands: vec![commands::CMD_SET_TO_NOW.to_string()],
+            ..Default::default()
+        }),
         ..Default::default()
     })
     .expect("can to serialize server capabilities");
@@ -108,6 +126,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
+                tracing::debug!(method = ?req.method, "got request");
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
@@ -165,6 +184,104 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                             .sender
                             .send(Message::Response(resp))
                             .expect("can send response");
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
+                let req = match cast_request::<CodeActionRequest>(req) {
+                    Ok((id, params)) => {
+                        tracing::trace!(id = ?id, "got CodeAction request");
+                        let resp = code_actions::handle_code_actions_request(params, &documents)
+                            .map_err(|e| {
+                                tracing::warn!("Failed to handle code action request: {e:?}");
+                                e
+                            });
+                        let resp = build_response(id, resp);
+                        connection
+                            .sender
+                            .send(Message::Response(resp))
+                            .expect("can send response");
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
+                let req = match cast_request::<CodeLensRequest>(req) {
+                    Ok((id, params)) => {
+                        tracing::trace!(id = ?id, "got CodeLens request");
+                        let resp =
+                            codelens::handle_codelens_request(params, &documents).map_err(|e| {
+                                tracing::warn!("Failed to handle codelens request: {e:?}");
+                                e
+                            });
+                        let resp = build_response(id, resp);
+                        connection
+                            .sender
+                            .send(Message::Response(resp))
+                            .expect("can send response");
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
+                let req = match cast_request::<ExecuteCommand>(req) {
+                    Ok((id, params)) => {
+                        tracing::trace!(id = ?id, "got ExecuteCommand request");
+                        let result = commands::handle_execute_command_request(params, &documents)
+                            .map_err(|e| {
+                                tracing::warn!("Failed to handle execute command request: {e:?}");
+                                e
+                            });
+
+                        let (edit, resp) = match result {
+                            Ok(edit) => (
+                                edit,
+                                Response {
+                                    id,
+                                    result: Some(serde_json::Value::Bool(true)),
+                                    error: None,
+                                },
+                            ),
+                            Err(error) => (
+                                None,
+                                Response {
+                                    id,
+                                    result: None,
+                                    error: Some(ResponseError {
+                                        code: lsp_server::ErrorCode::InternalError as i32,
+                                        message: error.to_string(),
+                                        data: None,
+                                    }),
+                                },
+                            ),
+                        };
+                        connection
+                            .sender
+                            .send(Message::Response(resp))
+                            .expect("can send response");
+
+                        if let Some((label, edit)) = edit {
+                            let apply_edit_params = ApplyWorkspaceEditParams {
+                                label: Some(label.to_string()),
+                                edit,
+                            };
+                            let request_id: i32 = rand::random();
+                            tracing::trace!(?apply_edit_params, ?request_id, "sending apply edit");
+                            let apply_edit_req = Request {
+                                id: request_id.into(),
+                                method: ApplyWorkspaceEdit::METHOD.to_string(),
+                                params: serde_json::to_value(apply_edit_params).unwrap(),
+                            };
+                            connection
+                                .sender
+                                .send(Message::Request(apply_edit_req))
+                                .expect("can send request");
+                        }
+
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
