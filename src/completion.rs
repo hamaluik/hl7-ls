@@ -28,18 +28,52 @@ pub fn handle_completion_request(
         if let Some(location) = message.locate_cursor(offset) {
             if let Some((segment_name, _si, _segment)) = location.segment {
                 if let Some((fi, _field)) = location.field {
-                    let has_components = false;
+                    let has_components = location
+                        .repeat
+                        .map(|r| r.1.has_components())
+                        .unwrap_or(false);
                     if has_components {
+                        if let Some(table_values) = spec::component_table_values(
+                            version,
+                            segment_name,
+                            fi - 1,
+                            location.component.unwrap().0 - 1,
+                        ) {
+                            tracing::trace!(?table_values, "found component table values");
+                            completions.extend(table_values.into_iter().map(|v| {
+                                let (label, detail) = v;
+                                lsp_types::CompletionItem {
+                                    label,
+                                    label_details: Some(lsp_types::CompletionItemLabelDetails {
+                                        detail,
+                                        description: None,
+                                    }),
+                                    kind: Some(CompletionItemKind::VALUE),
+                                    ..Default::default()
+                                }
+                            }));
+                        } else {
+                            tracing::trace!("no component table values found");
+                        }
                     } else if let Some(table_values) =
-                        spec::field_table_values(version, segment_name, fi - 1)
+                        spec::field_table_values(version, segment_name, fi)
                     {
-                        completions.extend(table_values.iter().map(|v| {
+                        tracing::trace!(?table_values, "found field table values");
+                        completions.extend(table_values.into_iter().map(|v| {
+                            let (label, detail) = v;
+
                             lsp_types::CompletionItem {
-                                label: v.to_string(),
+                                label,
+                                label_details: Some(lsp_types::CompletionItemLabelDetails {
+                                    detail,
+                                    description: None,
+                                }),
                                 kind: Some(CompletionItemKind::VALUE),
                                 ..Default::default()
                             }
                         }));
+                    } else {
+                        tracing::trace!("no field table values found");
                     }
                 }
             }
@@ -58,15 +92,12 @@ fn segment_completions(version: &str) -> Vec<CompletionItem> {
         .map(|def| {
             def.segments
                 .keys()
-                .map(|s| {
-                    CompletionItem {
-                        label: s.to_string(),
-                        kind: Some(CompletionItemKind::CLASS),
-                        ..Default::default()
-                    }
+                .map(|s| CompletionItem {
+                    label: s.to_string(),
+                    kind: Some(CompletionItemKind::CLASS),
+                    ..Default::default()
                 })
                 .collect()
         })
         .unwrap_or_default()
 }
-

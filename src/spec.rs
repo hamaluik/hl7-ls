@@ -148,16 +148,72 @@ pub fn describe_component(version: &str, segment: &str, field: usize, component:
         .unwrap_or_else(|| "Unknown segment".to_string())
 }
 
-pub fn field_table_values(version: &str, segment: &str, field: usize) -> Option<Vec<String>> {
+pub fn field_table_values(
+    version: &str,
+    segment: &str,
+    field: usize,
+) -> Option<Vec<(String, Option<String>)>> {
+    // special case for version strings
+    if segment == "MSH" && field == 12 {
+        let mut versions: Vec<String> = hl7_definitions::VERSIONS
+            .iter()
+            .map(|v| v.to_string())
+            .collect();
+        versions.sort_by(|a, b| {
+            let mut a = a
+                .split('.')
+                .map(|s| s.parse::<u32>().unwrap_or(0))
+                .collect::<Vec<u32>>();
+            if a.len() == 2 {
+                a.push(0);
+            }
+            let mut b = b
+                .split('.')
+                .map(|s| s.parse::<u32>().unwrap_or(0))
+                .collect::<Vec<u32>>();
+            if b.len() == 2 {
+                b.push(0);
+            }
+            a.cmp(&b)
+        });
+        return Some(versions.into_iter().map(|v| (v, None)).collect());
+    }
+
+    if field == 0 {
+        return None;
+    }
+
     hl7_definitions::get_segment(version, segment)
-        .and_then(|s| s.fields.get(field))
+        .and_then(|s| s.fields.get(field - 1))
         .and_then(|f| f.table)
         .and_then(|t| hl7_definitions::table_values(t as u16))
         .map(|values| {
             let mut values = values
                 .iter()
-                .map(|(code, _description)| code.to_string())
-                .collect::<Vec<String>>();
+                .map(|(code, description)| (code.to_string(), Some(description.to_string())))
+                .collect::<Vec<(String, Option<String>)>>();
+            values.sort();
+            values
+        })
+}
+
+pub fn component_table_values(
+    version: &str,
+    segment: &str,
+    field: usize,
+    component: usize,
+) -> Option<Vec<(String, Option<String>)>> {
+    hl7_definitions::get_segment(version, segment)
+        .and_then(|s| s.fields.get(field))
+        .and_then(|f| hl7_definitions::get_field(version, f.datatype))
+        .and_then(|f| f.subfields.get(component))
+        .and_then(|c| c.table)
+        .and_then(|t| hl7_definitions::table_values(t as u16))
+        .map(|values| {
+            let mut values = values
+                .iter()
+                .map(|(code, description)| (code.to_string(), Some(description.to_string())))
+                .collect::<Vec<(String, Option<String>)>>();
             values.sort();
             values
         })
