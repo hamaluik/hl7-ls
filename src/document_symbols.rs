@@ -121,7 +121,7 @@ fn repeat_symbols(
                     let name = format!(
                         "{segment}.{field}[{repeat}]",
                         segment = segment.name,
-                        field = field.0,
+                        field = field.0 + 1,
                         repeat = ri + 1
                     );
                     let range = std_range_to_lsp_range(text, repeat.range.clone());
@@ -170,7 +170,7 @@ fn component_symbols(
             let name = format!(
                 "{segment}.{field}{repeat}.{component}",
                 segment = segment.name,
-                field = field.0,
+                field = field.0 + 1,
                 repeat = repeat_name,
                 component = ci + 1
             );
