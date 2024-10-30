@@ -1,3 +1,4 @@
+use cli::Cli;
 use color_eyre::eyre::Context;
 use color_eyre::Result;
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError};
@@ -14,9 +15,14 @@ use lsp_types::{
     TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 use lsp_types::{InitializeParams, ServerCapabilities};
-use std::io::Write;
+use std::fs::{self};
+use std::io::IsTerminal;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::{filter, prelude::*, Registry};
 use utils::build_response;
 
+mod cli;
 mod code_actions;
 mod codelens;
 mod commands;
@@ -28,21 +34,84 @@ pub mod spec;
 pub mod utils;
 mod validation;
 
+fn setup_logging(cli: Cli) -> Result<()> {
+    let use_colours = match (cli.colour, &cli.command) {
+        (clap::ColorChoice::Never, _) => false,
+        (clap::ColorChoice::Always, _) => true,
+        (_, Some(cli::Commands::LogToFile { .. })) => false,
+        (_, Some(cli::Commands::LogToStderr)) => std::io::stderr().is_terminal(),
+        (_, None) => std::io::stderr().is_terminal(),
+    };
+
+    color_eyre::config::HookBuilder::new()
+        .theme(if use_colours {
+            color_eyre::config::Theme::dark()
+        } else {
+            color_eyre::config::Theme::new()
+        })
+        .install()
+        .expect("Failed to install `color_eyre`");
+
+    let log_level = match cli.verbose {
+        0 => LevelFilter::INFO,
+        1 => LevelFilter::DEBUG,
+        _ => LevelFilter::TRACE,
+    };
+
+    let log_file = match cli.command {
+        Some(cli::Commands::LogToFile { ref log_file }) => Some(log_file),
+        _ => None,
+    };
+
+    let logs_filter = move |metadata: &tracing::Metadata<'_>| {
+        metadata.target().starts_with("hl7_ls") && *metadata.level() <= log_level
+    };
+
+    let stderr_log = if log_file.is_none() {
+        Some(
+            tracing_subscriber::fmt::layer()
+                // .pretty()
+                .with_ansi(use_colours)
+                .with_timer(tracing_subscriber::fmt::time::ChronoLocal::rfc_3339())
+                .with_target(false)
+                .with_level(true)
+                .with_writer(std::io::stderr)
+                .with_filter(filter::filter_fn(logs_filter)),
+        )
+    } else {
+        None
+    };
+
+    let file_log = if let Some(log_file) = log_file {
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_file)
+            .wrap_err_with(|| format!("Failed to open log file: {log_file:?}"))?;
+        Some(
+            tracing_subscriber::fmt::layer()
+                // .json()
+                // .pretty()
+                .with_ansi(use_colours)
+                .with_timer(tracing_subscriber::fmt::time::ChronoLocal::rfc_3339())
+                .with_target(false)
+                .with_level(true)
+                .with_writer(file)
+                .with_filter(filter::filter_fn(logs_filter)),
+        )
+    } else {
+        None
+    };
+
+    Registry::default().with(stderr_log).with(file_log).init();
+    Ok(())
+}
+
 fn main() -> Result<()> {
-    color_eyre::install()?;
+    let cli = cli::cli();
+    setup_logging(cli).wrap_err_with(|| "Failed to setup logging")?;
 
-    let log_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("hl7_ls.log");
-    let mut log_file = std::fs::File::create(&log_path)
-        .wrap_err_with(|| format!("Failed to create log file {}", log_path.display()))?;
-    eprintln!("Logging to {}", log_path.display());
-    writeln!(log_file, "---")?;
-    tracing_subscriber::fmt()
-        .with_ansi(true)
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_writer(log_file)
-        .init();
-
-    tracing::info!("starting generic LSP server");
+    tracing::info!("Starting HL7 Language Server");
     let (connection, io_threads) = Connection::stdio();
 
     let (id, params) = connection.initialize_start()?;
@@ -60,7 +129,7 @@ fn main() -> Result<()> {
         PositionEncodingKind::UTF8
     } else {
         tracing::warn!(
-            "Client does not support UTF-8 position encoding, unicode stuff will be broken"
+            "Client does not support UTF-8 position encoding, unicode stuff will probably be broken"
         );
         PositionEncodingKind::UTF16
     };

@@ -1,10 +1,18 @@
 [package]
 name = "hl7-ls"
-version = "0.1.0"
+version = "1.0.0-pre"
 edition = "2021"
+authors = ["Kenton Hamaluik <kenton@hamaluik.ca>"]
+description = "A Language Server for HL7 messages"
+license = "Apache-2.0"
+repository = "https://github.com/hamaluik/hl7-ls"
+readme = "README.md"
+keywords = ["hl7", "lsp", "language-server", "language-server-protocol"]
+categories = ["development-tools"]
 
 [dependencies]
 chrono = "0.4.38"
+clap = { version = "4.5.20", features = ["derive", "cargo", "env", "unicode", "wrap_help"] }
 color-eyre = "0.6.3"
 hl7-definitions = { git = "https://github.com/hamaluik/hl7-definitions.git", version = "0.0.2" }
 hl7-parser = { git = "https://github.com/hamaluik/hl7-parser.git", branch = "v030", features = ["chrono"] }
@@ -15,4 +23,4 @@ rand = "0.8.5"
 serde = { version = "1.0.213", features = ["derive"] }
 serde_json = "1.0.132"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.18", features = ["chrono"] }
