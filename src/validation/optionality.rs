@@ -2,7 +2,9 @@ use super::ValidationError;
 use hl7_definitions::FieldOptionality;
 use hl7_parser::Message;
 use lsp_types::DiagnosticSeverity;
+use tracing::instrument;
 
+#[instrument(level = "debug", skip(message))]
 pub fn validate_message(message: &Message, version: &str) -> Vec<ValidationError> {
     let mut errors = Vec::new();
 

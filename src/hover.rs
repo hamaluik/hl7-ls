@@ -10,7 +10,9 @@ use color_eyre::{
 use hl7_parser::parse_message_with_lenient_newlines;
 use lsp_textdocument::TextDocuments;
 use lsp_types::{Hover, HoverContents, HoverParams, MarkedString};
+use tracing::instrument;
 
+#[instrument(level = "debug", skip(params, documents))]
 pub fn handle_hover_request(params: HoverParams, documents: &TextDocuments) -> Result<Hover> {
     let uri = params.text_document_position_params.text_document.uri;
     let text = documents
@@ -20,13 +22,22 @@ pub fn handle_hover_request(params: HoverParams, documents: &TextDocuments) -> R
     let offset = position_to_offset(text, position.line, position.character)
         .wrap_err_with(|| "Failed to convert position to offset")?;
 
+    let parse_span = tracing::trace_span!("parse message");
+    let _parse_span_guard = parse_span.enter();
     let message = parse_message_with_lenient_newlines(text)
         .wrap_err_with(|| "Failed to parse HL7 message")?;
+    drop(_parse_span_guard);
+
+    let locate_span = tracing::trace_span!("locate cursor");
+    let _locate_span_guard = locate_span.enter();
     let location = message
         .locate_cursor(offset)
         .wrap_err_with(|| "Failed to locate cursor in HL7 message")?;
+    drop(_locate_span_guard);
 
     // format the hover text
+    let format_span = tracing::trace_span!("format hover text");
+    let _format_span_guard = format_span.enter();
     let mut hover_text = format!("`{location}`");
     let mut url = None;
     let mut timestamp = None;
@@ -182,6 +193,9 @@ pub fn handle_hover_request(params: HoverParams, documents: &TextDocuments) -> R
     } else {
         None
     };
+
+    drop(_format_span_guard);
+    tracing::trace!(hover_text = %hover_text, range = ?range, "generated hover text");
 
     let hover = Hover {
         contents: HoverContents::Scalar(MarkedString::from_markdown(hover_text)),

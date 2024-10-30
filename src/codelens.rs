@@ -3,7 +3,9 @@ use color_eyre::{eyre::ContextCompat, Result};
 use hl7_parser::{parse_message_with_lenient_newlines, Message};
 use lsp_textdocument::TextDocuments;
 use lsp_types::{CodeLens, CodeLensParams, Command, Uri};
+use tracing::instrument;
 
+#[instrument(level = "debug", skip(params, documents))]
 pub fn handle_codelens_request(
     params: CodeLensParams,
     documents: &TextDocuments,
@@ -13,16 +15,20 @@ pub fn handle_codelens_request(
         .get_document_content(&uri, None)
         .wrap_err_with(|| format!("no document found for uri: {:?}", uri))?;
 
-    let Ok(_message) = parse_message_with_lenient_newlines(text) else {
+    let parse_span = tracing::trace_span!("parse message");
+    let _parse_span_guard = parse_span.enter();
+    let Ok(message) = parse_message_with_lenient_newlines(text) else {
         return Ok(None);
     };
+    drop(_parse_span_guard);
 
     let mut code_lens = vec![];
-    code_lens.extend(timestamp_code_lenses(&uri, &_message));
+    code_lens.extend(timestamp_code_lenses(&uri, &message));
 
     Ok(Some(code_lens))
 }
 
+#[instrument(level = "trace", skip(message))]
 fn timestamp_code_lenses(uri: &Uri, message: &Message) -> Vec<CodeLens> {
     let message_version = message
         .query("MSH.12")

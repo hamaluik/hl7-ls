@@ -9,7 +9,9 @@ use hl7_parser::{
 };
 use lsp_textdocument::TextDocuments;
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
+use tracing::instrument;
 
+#[instrument(level = "debug", skip(params, documents))]
 pub fn handle_document_symbols_request(
     params: DocumentSymbolParams,
     documents: &TextDocuments,
@@ -19,8 +21,11 @@ pub fn handle_document_symbols_request(
         .get_document_content(&uri, None)
         .wrap_err_with(|| format!("no document found for uri: {uri:?}"))?;
 
+    let parse_span = tracing::trace_span!("parse message");
+    let _parse_span_guard = parse_span.enter();
     let message = hl7_parser::parse_message_with_lenient_newlines(text)
         .wrap_err_with(|| "Failed to parse HL7 message")?;
+    drop(_parse_span_guard);
 
     let mut version = message
         .query("MSH.12")
@@ -33,6 +38,7 @@ pub fn handle_document_symbols_request(
     Ok(segment_symbols(version, &message, text))
 }
 
+#[instrument(level = "trace", skip(msg, text))]
 fn segment_symbols(version: &str, msg: &Message, text: &str) -> Vec<DocumentSymbol> {
     let mut symbols = Vec::new();
     for segment in msg.segments() {
@@ -59,6 +65,7 @@ fn segment_symbols(version: &str, msg: &Message, text: &str) -> Vec<DocumentSymb
     symbols
 }
 
+#[instrument(level = "trace", skip(version, segment, text))]
 fn field_symbols(version: &str, segment: &Segment, text: &str) -> Vec<DocumentSymbol> {
     let mut symbols = Vec::new();
 
@@ -87,6 +94,7 @@ fn field_symbols(version: &str, segment: &Segment, text: &str) -> Vec<DocumentSy
     symbols
 }
 
+#[instrument(level = "trace", skip(version, segment, field, text))]
 fn repeat_symbols(
     version: &str,
     segment: &Segment,
@@ -142,6 +150,7 @@ fn repeat_symbols(
     }
 }
 
+#[instrument(level = "trace", skip(version, segment, field, repeat, text))]
 fn component_symbols(
     version: &str,
     segment: &Segment,

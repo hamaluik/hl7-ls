@@ -4,9 +4,11 @@ use hl7_parser::timestamps::TimeStamp;
 use lsp_textdocument::TextDocuments;
 use lsp_types::{ExecuteCommandParams, Range, TextEdit, Uri, WorkspaceEdit};
 use std::collections::HashMap;
+use tracing::instrument;
 
 pub const CMD_SET_TO_NOW: &str = "hl7.setTimestampToNow";
 
+#[instrument(level = "debug", skip(params, documents))]
 pub fn handle_execute_command_request(
     params: ExecuteCommandParams,
     documents: &TextDocuments,
@@ -20,6 +22,7 @@ pub fn handle_execute_command_request(
     }
 }
 
+#[instrument(level = "trace", skip(_documents))]
 fn handle_set_to_now_command(
     params: ExecuteCommandParams,
     _documents: &TextDocuments,
@@ -30,7 +33,6 @@ fn handle_set_to_now_command(
         "Expected 2 arguments for set to now command"
     );
 
-    tracing::trace!(?params.arguments, "Handling set to now command");
     let uri: Uri = params.arguments[0]
         .as_str()
         .and_then(|s| s.parse().ok())
@@ -45,7 +47,7 @@ fn handle_set_to_now_command(
     let now: TimeStamp = now.into();
     let now = now.to_string();
 
-    tracing::info!(?uri, ?range, ?now, "Setting timestamp to now");
+    tracing::debug!(?uri, ?range, ?now, "Setting timestamp to now");
     let mut changes = HashMap::new();
     changes.insert(
         uri,

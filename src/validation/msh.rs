@@ -1,9 +1,11 @@
 use crate::spec;
 use hl7_parser::Message;
 use lsp_types::DiagnosticSeverity;
+use tracing::instrument;
 
 use super::{ValidationCode, ValidationError};
 
+#[instrument(level = "debug", skip(message))]
 pub fn validate_message<'m>(message: &'m Message) -> (Option<&'m str>, Vec<ValidationError>) {
     let version_range = message.query("MSH.12").map(|v| (v.raw_value(), v.range()));
 

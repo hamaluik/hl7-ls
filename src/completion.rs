@@ -2,9 +2,11 @@ use color_eyre::{eyre::ContextCompat, Result};
 use hl7_parser::parse_message_with_lenient_newlines;
 use lsp_textdocument::TextDocuments;
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse};
+use tracing::instrument;
 
 use crate::{spec, utils::position_to_offset};
 
+#[instrument(level = "debug", skip(params, documents))]
 pub fn handle_completion_request(
     params: CompletionParams,
     documents: &TextDocuments,
@@ -19,7 +21,11 @@ pub fn handle_completion_request(
 
     let mut completions = vec![];
 
-    if let Ok(message) = parse_message_with_lenient_newlines(text) {
+    if let Ok(message) = {
+        let parse_span = tracing::trace_span!("parse message");
+        let _parse_span_guard = parse_span.enter();
+        parse_message_with_lenient_newlines(text)
+    } {
         let version = message
             .query("MSH.12")
             .map(|v| v.raw_value())
@@ -87,6 +93,7 @@ pub fn handle_completion_request(
     Ok(CompletionResponse::Array(completions))
 }
 
+#[instrument(level = "trace")]
 fn segment_completions(version: &str) -> Vec<CompletionItem> {
     hl7_definitions::get_definition(version)
         .map(|def| {

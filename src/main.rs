@@ -17,6 +17,7 @@ use lsp_types::{
 use lsp_types::{InitializeParams, ServerCapabilities};
 use std::fs::{self};
 use std::io::IsTerminal;
+use tracing::instrument;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{filter, prelude::*, Registry};
@@ -178,10 +179,11 @@ fn main() -> Result<()> {
     io_threads.join()?;
 
     // Shut down gracefully.
-    tracing::info!("shutting down server");
+    tracing::info!("Shutting down");
     Ok(())
 }
 
+#[instrument(level = "debug", skip(connection, client_capabilities))]
 fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) -> Result<()> {
     let mut documents = TextDocuments::new();
 
@@ -195,14 +197,17 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
-                tracing::debug!(method = ?req.method, "got request");
+                let request_span =
+                    tracing::debug_span!("request", method = ?req.method, id = ?req.id);
+                let _request_span_guard = request_span.enter();
+
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
 
                 let req = match cast_request::<HoverRequest>(req) {
                     Ok((id, params)) => {
-                        tracing::trace!(id = ?id, "got Hover request");
+                        tracing::debug!("got Hover request");
                         let resp = hover::handle_hover_request(params, &documents).map_err(|e| {
                             tracing::warn!("Failed to handle hover request: {e:?}");
                             e
@@ -220,7 +225,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
 
                 let req = match cast_request::<DocumentSymbolRequest>(req) {
                     Ok((id, params)) => {
-                        tracing::trace!(id = ?id, "got DocumentSymbol request");
+                        tracing::debug!("got DocumentSymbol request");
                         let resp =
                             document_symbols::handle_document_symbols_request(params, &documents)
                                 .map_err(|e| {
@@ -242,7 +247,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
 
                 let req = match cast_request::<Completion>(req) {
                     Ok((id, params)) => {
-                        tracing::trace!(id = ?id, "got Completion request");
+                        tracing::debug!("got Completion request");
                         let resp = completion::handle_completion_request(params, &documents)
                             .map_err(|e| {
                                 tracing::warn!("Failed to handle completion request: {e:?}");
@@ -261,7 +266,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
 
                 let req = match cast_request::<CodeActionRequest>(req) {
                     Ok((id, params)) => {
-                        tracing::trace!(id = ?id, "got CodeAction request");
+                        tracing::debug!("got CodeAction request");
                         let resp = code_actions::handle_code_actions_request(params, &documents)
                             .map_err(|e| {
                                 tracing::warn!("Failed to handle code action request: {e:?}");
@@ -299,7 +304,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
 
                 let req = match cast_request::<ExecuteCommand>(req) {
                     Ok((id, params)) => {
-                        tracing::trace!(id = ?id, "got ExecuteCommand request");
+                        tracing::debug!("got ExecuteCommand request");
                         let result = commands::handle_execute_command_request(params, &documents)
                             .map_err(|e| {
                                 tracing::warn!("Failed to handle execute command request: {e:?}");
@@ -334,6 +339,8 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                             .expect("can send response");
 
                         if let Some((label, edit)) = edit {
+                            let apply_edit_span = tracing::debug_span!("apply edit");
+                            let _apply_edit_span_guard = apply_edit_span.enter();
                             let apply_edit_params = ApplyWorkspaceEditParams {
                                 label: Some(label.to_string()),
                                 edit,
@@ -363,10 +370,16 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                 tracing::warn!(response = ?resp, "got response from server??");
             }
             Message::Notification(not) => {
+                let notification_span = tracing::debug_span!("notification", method = ?not.method);
+                let _notification_span_guard = notification_span.enter();
+
                 if documents.listen(not.method.as_str(), &not.params) {
                     if !diagnostics_enabled {
                         continue;
                     }
+
+                    let diagnostics_span = tracing::debug_span!("diagnostics");
+                    let _diagnostics_span_guard = diagnostics_span.enter();
 
                     // document was updated, update diagnostics
                     // first, extract the uri
@@ -390,6 +403,8 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                         .as_ref()
                         .and_then(|uri| documents.get_document_content(uri, None));
                     if let Some(text) = text {
+                        let parse_and_validate_span = tracing::debug_span!("parse and validate");
+                        let _parse_and_validate_span_guard = parse_and_validate_span.enter();
                         let errors = match hl7_parser::parse_message_with_lenient_newlines(text) {
                             Ok(message) => validation::validate_message(&message)
                                 .into_iter()
@@ -397,6 +412,9 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                                 .collect(),
                             Err(err) => vec![diagnostics::parse_error_to_diagnostic(text, err)],
                         };
+                        drop(_parse_and_validate_span_guard);
+                        let publish_diagnostics_span = tracing::debug_span!("publish diagnostics");
+                        let _publish_diagnostics_span_guard = publish_diagnostics_span.enter();
                         if errors.is_empty() {
                             diagnostics::clear_diagnostics(&connection, uri.expect("document uri"));
                         } else {

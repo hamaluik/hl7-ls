@@ -2,6 +2,7 @@ use crate::utils::position_from_offset;
 use hl7_parser::Message;
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 use std::{fmt, ops::Range};
+use tracing::instrument;
 
 mod length;
 mod msh;
@@ -55,6 +56,7 @@ impl ValidationError {
     }
 }
 
+#[instrument(level = "debug", skip(message))]
 pub fn validate_message(message: &Message) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     if message.segments().count() < 2 {

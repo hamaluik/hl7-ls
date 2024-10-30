@@ -2,6 +2,7 @@ use color_eyre::Result;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Position, Range};
 use serde::Serialize;
+use tracing::instrument;
 
 pub fn position_to_offset(text: &str, line: u32, column: u32) -> Option<usize> {
     let mut offset = 0;
@@ -82,6 +83,7 @@ pub fn std_range_to_lsp_range(text: &str, range: std::ops::Range<usize>) -> Rang
     }
 }
 
+#[instrument(level = "debug", skip(result))]
 pub fn build_response<R: Serialize>(id: RequestId, result: Result<R>) -> Response {
     let (result, error) = match result {
         Ok(result) => (

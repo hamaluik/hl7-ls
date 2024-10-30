@@ -7,9 +7,11 @@ use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
     TextEdit, Uri, WorkspaceEdit,
 };
+use tracing::instrument;
 
 use crate::utils::std_range_to_lsp_range;
 
+#[instrument(level = "debug", skip(params, documents))]
 pub fn handle_code_actions_request(
     params: CodeActionParams,
     documents: &TextDocuments,
@@ -19,9 +21,12 @@ pub fn handle_code_actions_request(
         .get_document_content(&uri, None)
         .wrap_err_with(|| format!("no document found for uri: {:?}", uri))?;
 
+    let parse_span = tracing::trace_span!("parse message");
+    let _parse_span_guard = parse_span.enter();
     let Ok(message) = parse_message_with_lenient_newlines(text) else {
         return Ok(None);
     };
+    drop(_parse_span_guard);
 
     let code_actions = [generate_control_id(&uri, &message)]
         .into_iter()
@@ -32,6 +37,7 @@ pub fn handle_code_actions_request(
     Ok(Some(code_actions))
 }
 
+#[instrument(level = "trace", skip(uri))]
 fn generate_control_id(uri: &Uri, message: &Message) -> Option<CodeAction> {
     message.query("MSH.10").map(|control_id| {
         use rand::distributions::{Alphanumeric, DistString};
