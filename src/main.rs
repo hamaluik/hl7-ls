@@ -156,7 +156,10 @@ fn main() -> Result<()> {
             ..Default::default()
         })),
         execute_command_provider: Some(ExecuteCommandOptions {
-            commands: vec![commands::CMD_SET_TO_NOW.to_string()],
+            commands: vec![
+                commands::CMD_SET_TO_NOW.to_string(),
+                commands::CMD_SEND_MESSAGE.to_string(),
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -312,12 +315,34 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                             });
 
                         let (edit, resp) = match result {
-                            Ok(edit) => (
-                                edit,
+                            Ok(Some(command_result)) => match command_result {
+                                commands::CommandResult::WorkspaceEdit { label, edit } => (
+                                    Some((label, edit)),
+                                    Response {
+                                        id,
+                                        result: Some(serde_json::Value::Bool(true)),
+                                        error: None,
+                                    },
+                                ),
+                                commands::CommandResult::SentMessage { response } => (
+                                    None,
+                                    Response {
+                                        id,
+                                        result: Some(serde_json::Value::String(response)),
+                                        error: None,
+                                    },
+                                ),
+                            },
+                            Ok(None) => (
+                                None,
                                 Response {
                                     id,
-                                    result: Some(serde_json::Value::Bool(true)),
-                                    error: None,
+                                    result: Some(serde_json::Value::Null),
+                                    error: Some(ResponseError {
+                                        code: lsp_server::ErrorCode::RequestFailed as i32,
+                                        message: "Unknown command".to_string(),
+                                        data: None,
+                                    }),
                                 },
                             ),
                             Err(error) => (
@@ -327,7 +352,7 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                                     result: None,
                                     error: Some(ResponseError {
                                         code: lsp_server::ErrorCode::InternalError as i32,
-                                        message: error.to_string(),
+                                        message: format!("{error:#}"),
                                         data: None,
                                     }),
                                 },

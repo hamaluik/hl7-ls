@@ -14,17 +14,15 @@ A Language Server for HL7v2 messages implementing [LSP 3.17](https://microsoft.g
 - Document Symbols
 - Code Actions
 - Code Lens
-- Execute Command
+- Execute Command. Supported commands:
+    * `hl7.setTimestampToNow`: Set the timestamp at the current cursor position to the current time
+    * `hl7.sendMessage`: Send the current message to the given destination
 
 ### Planned
 
 - Selection Range
 - Semantic Tokens
 - Signature Help
-
-#### Extensions
-
-- Send HL7 message and receive response
 
 ### Not Planned
 
@@ -81,3 +79,7 @@ Options:
   -V, --version
           Print version
 ```
+
+## Supported Commands
+
+TODO: docs
