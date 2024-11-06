@@ -25,6 +25,9 @@ pub struct WorkspaceSpec {
     /// If set to true, the default validations and completions will be disabled.
     pub disable_default: Option<bool>,
 
+    /// Name of the custom spec
+    pub name: String,
+
     /// Custom segments
     pub segments: Vec<SegmentSpec>,
 }
@@ -34,6 +37,7 @@ pub struct WorkspaceSpec {
 pub struct SegmentSpec {
     pub name: String,
     pub description: Option<String>,
+    pub required: Option<bool>,
     #[serde_as(as = "HashMap<DisplayFromStr, _>")]
     pub fields: HashMap<usize, FieldSpec>,
 }
@@ -42,6 +46,8 @@ pub struct SegmentSpec {
 pub struct FieldSpec {
     pub description: Option<String>,
     pub datatype: Option<String>,
+    pub required: Option<bool>,
+    pub allowed_values: Option<Vec<(String, String)>>,
 }
 
 impl WorkspaceSpec {
@@ -108,7 +114,6 @@ impl WorkspaceSpecs {
         let Event { paths, kind, .. } = event;
         match kind {
             EventKind::Create(_) | EventKind::Modify(_) => {
-                tracing::trace!(?paths, "File created/modified");
                 for path in paths.iter() {
                     if is_a_validator(path) {
                         tracing::debug!(?path, "Custom validator script created/modified");
@@ -161,12 +166,72 @@ impl WorkspaceSpecs {
                     .iter()
                     .find(|s| s.name == segment)
                     .and_then(|s| s.fields.get(&field))
-                    .map(|f| f.description.as_ref().map(|d| d.to_string()))
+                    .map(|f| {
+                        let description = f.description.clone();
+                        let datatype = f.datatype.as_ref().map(|d| format!("({d})"));
+                        let required = match f.required {
+                            Some(true) => Some("[*required*]".to_string()),
+                            Some(false) => Some("[*optional*]".to_string()),
+                            None => None,
+                        };
+                        let table_values = f
+                            .allowed_values
+                            .as_ref()
+                            .map(|v| {
+                                v.iter()
+                                    .map(|(k, v)| format!("        `{k}` ({v})"))
+                                    .collect::<Vec<String>>()
+                                    .join("\n")
+                            })
+                            .unwrap_or_default();
+                        let table_values = if table_values.is_empty() {
+                            None
+                        } else {
+                            Some(format!("\n      Table values:\n{table_values}"))
+                        };
+
+                        if description.is_none()
+                            && datatype.is_none()
+                            && required.is_none()
+                            && table_values.is_none()
+                        {
+                            return None;
+                        }
+                        Some(format!(
+                            "\n    {spec_name}:\n      {desc}",
+                            spec_name = spec.name,
+                            desc = [description, datatype, required, table_values]
+                                .into_iter()
+                                .flatten()
+                                .collect::<Vec<String>>()
+                                .join(" ")
+                        ))
+                    })
             })
             .flatten()
             .collect::<Vec<String>>()
             .join("\n")
     }
+
+    // pub fn table_values(&self, uri: &Uri, segment: &str, field: usize) -> Vec<(String, String)> {
+    //     (&self.specs)
+    //         .into_iter()
+    //         .filter_map(|x| {
+    //             let (path, spec) = x.pair();
+    //             if !WorkspaceSpecs::spec_applies_to_uri(path, uri) {
+    //                 return None;
+    //             }
+    //
+    //             spec.segments
+    //                 .iter()
+    //                 .find(|s| s.name == segment)
+    //                 .and_then(|s| s.fields.get(&field))
+    //                 .map(|f| f.allowed_values.as_ref().map(|v| v.clone()))
+    //         })
+    //         .flatten()
+    //         .next() // TODO: merge allowed values? or only pick one? or group by validation?
+    //         .unwrap_or_default()
+    // }
 }
 
 #[cfg(test)]
@@ -177,15 +242,23 @@ mod tests {
     fn spec_can_roundtrip_with_toml() {
         let my_spec = WorkspaceSpec {
             disable_default: None,
+            name: "My Custom Spec".to_string(),
             segments: vec![
                 SegmentSpec {
                     name: "MSH".to_string(),
                     description: Some("Message Header".to_string()),
+                    required: Some(true),
                     fields: [(
                         1,
                         FieldSpec {
                             description: Some("Field Separator".to_string()),
                             datatype: Some("ST".to_string()),
+                            required: Some(true),
+                            allowed_values: Some(vec![
+                                ("|".to_string(), "Pipe".to_string()),
+                                ("^".to_string(), "Caret".to_string()),
+                                ("~".to_string(), "Tilde".to_string()),
+                            ]),
                         },
                     )]
                     .into_iter()
@@ -194,11 +267,14 @@ mod tests {
                 SegmentSpec {
                     name: "PID".to_string(),
                     description: Some("Patient Identification".to_string()),
+                    required: None,
                     fields: [(
                         3,
                         FieldSpec {
                             description: Some("Patient Identifier List".to_string()),
                             datatype: Some("CX".to_string()),
+                            required: Some(true),
+                            allowed_values: None,
                         },
                     )]
                     .into_iter()
@@ -212,5 +288,10 @@ mod tests {
         let roundtripped_spec: WorkspaceSpec =
             toml::from_str(&toml_spec).expect("Can deserialize spec");
         assert_eq!(my_spec, roundtripped_spec);
+    }
+
+    #[test]
+    fn the_sample_spec_can_be_loaded() {
+        WorkspaceSpec::load_spec("sample.hl7v.toml").expect("Can load sample spec");
     }
 }

@@ -46,7 +46,6 @@ pub fn handle_hover_request(
     let mut hover_text = format!("`{location}`");
     let mut url = None;
     let mut timestamp = None;
-    let mut has_workspace_description = false;
     if let Some(seg) = location.segment {
         let message_version = message
             .query("MSH.12")
@@ -80,7 +79,7 @@ pub fn handle_hover_request(
                 if !workspace_description.is_empty() {
                     hover_text.push_str(
                         format!(
-                            "\n  **{segment}.{field}{repeat}**: {workspace_description}†",
+                            "\n  **{segment}.{field}{repeat}** _workspace description(s)_:{workspace_description}",
                             segment = seg.0,
                             field = field.0,
                             repeat = repeat,
@@ -88,7 +87,6 @@ pub fn handle_hover_request(
                         )
                         .as_str(),
                     );
-                    has_workspace_description = true;
                 }
             }
 
@@ -181,7 +179,7 @@ pub fn handle_hover_request(
         }
     }
 
-    if url.is_some() || timestamp.is_some() || has_workspace_description {
+    if url.is_some() || timestamp.is_some() {
         hover_text.push_str("\n\n---");
     }
 
@@ -190,9 +188,6 @@ pub fn handle_hover_request(
     }
     if let Some(url) = url {
         hover_text.push_str(format!("\n\n**More info**: [{url}]({url})").as_str());
-    }
-    if has_workspace_description {
-        hover_text.push_str("\n\n†: Workspace description");
     }
 
     // figure out the most relevant hover range

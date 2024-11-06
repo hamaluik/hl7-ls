@@ -1,14 +1,26 @@
 disable_default = false
+name = "Sample"
 
 [[segments]]
 name = "MSH"
+required = true
+
 [segments.fields.10]
 description = "Message ID #"
+required = true
 
 [[segments]]
 name = "PID"
+
 [segments.fields.3]
 description = "MRN"
 [segments.fields.4]
 description = "Enterprise ID"
 
+[[segments]]
+name = "PV1"
+
+[segments.fields.2]
+description = "In/Out Patient"
+required = true
+allowed_values = [["I", "Inpatient"], ["O", "Outpatient"]]

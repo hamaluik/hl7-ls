@@ -60,7 +60,7 @@ pub fn describe_field(version: &str, segment: &str, field: usize) -> String {
                                 let mut values = values
                                     .iter()
                                     .map(|(code, description)| {
-                                        format!("    `{code}` ({description})")
+                                        format!("      `{code}` ({description})")
                                     })
                                     .collect::<Vec<String>>();
                                 values.sort();
@@ -69,7 +69,7 @@ pub fn describe_field(version: &str, segment: &str, field: usize) -> String {
                             .unwrap_or_default()
                     });
                     let table = table
-                        .map(|t| format!("\n  Table values:\n{}", t))
+                        .map(|t| format!("\n    Table values:\n{t}"))
                         .unwrap_or_default();
 
                     format!(
