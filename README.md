@@ -18,12 +18,16 @@ A Language Server for HL7v2 messages implementing [LSP 3.17](https://microsoft.g
     * `hl7.setTimestampToNow`: Set the timestamp at the current cursor position to the current time
     * `hl7.sendMessage`: Send the current message to the given destination
 
+### In Progress
+
+- Custom field descriptions
+- Custom validations
+
 ### Planned
 
 - Selection Range
 - Semantic Tokens
 - Signature Help
-- Custom validations
 
 ### Not Planned
 
