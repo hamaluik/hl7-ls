@@ -44,6 +44,7 @@ fn generate_control_id(uri: &Uri, message: &Message) -> Option<CodeAction> {
         let new_control_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 20);
 
         let range = control_id.range();
+        #[allow(clippy::mutable_key_type)]
         let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
         changes.insert(
             uri.clone(),

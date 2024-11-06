@@ -65,6 +65,7 @@ fn handle_set_to_now_command(
     let now = now.to_string();
 
     tracing::debug!(?uri, ?range, ?now, "Setting timestamp to now");
+    #[allow(clippy::mutable_key_type)]
     let mut changes = HashMap::new();
     changes.insert(
         uri,
