@@ -83,6 +83,12 @@ pub fn std_range_to_lsp_range(text: &str, range: std::ops::Range<usize>) -> Rang
     }
 }
 
+pub fn lsp_range_to_std_range(text: &str, range: Range) -> Option<std::ops::Range<usize>> {
+    let start = position_to_offset(text, range.start.line, range.start.character)?;
+    let end = position_to_offset(text, range.end.line, range.end.character)?;
+    Some(start..end)
+}
+
 #[instrument(level = "debug", skip(result))]
 pub fn build_response<R: Serialize>(id: RequestId, result: Result<R>) -> Response {
     let (result, error) = match result {

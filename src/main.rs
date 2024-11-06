@@ -165,6 +165,7 @@ fn main() -> Result<()> {
             commands: vec![
                 commands::CMD_SET_TO_NOW.to_string(),
                 commands::CMD_SEND_MESSAGE.to_string(),
+                commands::CMD_GENERATE_CONTROL_ID.to_string(),
             ],
             ..Default::default()
         }),

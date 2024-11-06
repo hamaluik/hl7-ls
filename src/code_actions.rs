@@ -1,15 +1,15 @@
-use std::collections::HashMap;
-
+use crate::{
+    commands::CMD_GENERATE_CONTROL_ID,
+    utils::lsp_range_to_std_range,
+};
 use color_eyre::{eyre::ContextCompat, Result};
 use hl7_parser::{parse_message_with_lenient_newlines, Message};
 use lsp_textdocument::TextDocuments;
 use lsp_types::{
-    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
-    TextEdit, Uri, WorkspaceEdit,
+    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Command,
+    Range, Uri,
 };
 use tracing::instrument;
-
-use crate::utils::std_range_to_lsp_range;
 
 #[instrument(level = "debug", skip(params, documents))]
 pub fn handle_code_actions_request(
@@ -28,7 +28,7 @@ pub fn handle_code_actions_request(
     };
     drop(_parse_span_guard);
 
-    let code_actions = [generate_control_id(&uri, &message)]
+    let code_actions = [generate_control_id(&params.range, &uri, &message)]
         .into_iter()
         .flatten()
         .map(CodeActionOrCommand::CodeAction)
@@ -38,34 +38,34 @@ pub fn handle_code_actions_request(
 }
 
 #[instrument(level = "trace", skip(uri))]
-fn generate_control_id(uri: &Uri, message: &Message) -> Option<CodeAction> {
-    message.query("MSH.10").map(|control_id| {
-        use rand::distributions::{Alphanumeric, DistString};
-        let new_control_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 20);
+fn generate_control_id(range: &Range, uri: &Uri, message: &Message) -> Option<CodeAction> {
+    // only available if MSH.10 is present
+    message
+        .query("MSH.10")
+        .map(|existing_control_id| {
+            // only if the action range is within the existing control ID
+            let action_range = lsp_range_to_std_range(message.raw_value(), *range)?;
+            let existing_range = existing_control_id.range();
+            if action_range.start < existing_range.start || action_range.end > existing_range.end {
+                return None;
+            }
 
-        let range = control_id.range();
-        #[allow(clippy::mutable_key_type)]
-        let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
-        changes.insert(
-            uri.clone(),
-            vec![TextEdit {
-                range: std_range_to_lsp_range(message.raw_value(), range),
-                new_text: new_control_id,
-            }],
-        );
-
-        CodeAction {
-            title: "Generate new control ID".to_string(),
-            kind: Some(CodeActionKind::REFACTOR),
-            diagnostics: None,
-            edit: Some(WorkspaceEdit {
-                changes: Some(changes),
-                ..Default::default()
-            }),
-            command: None,
-            data: None,
-            is_preferred: None,
-            disabled: None,
-        }
-    })
+            Some(CodeAction {
+                title: "Generate new control ID".to_string(),
+                kind: Some(CodeActionKind::REFACTOR),
+                diagnostics: None,
+                edit: None,
+                command: Some(Command {
+                    title: "Generate new control ID".to_string(),
+                    command: CMD_GENERATE_CONTROL_ID.to_string(),
+                    arguments: Some(vec![
+                        serde_json::to_value(uri.clone()).expect("can serialize uri")
+                    ]),
+                }),
+                data: None,
+                is_preferred: None,
+                disabled: None,
+            })
+        })
+        .flatten()
 }
