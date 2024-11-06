@@ -4,10 +4,7 @@ use crate::{
     workspace::specs::WorkspaceSpecs,
 };
 use chrono::{DateTime, Local, Utc};
-use color_eyre::{
-    eyre::{Context, ContextCompat},
-    Result,
-};
+use color_eyre::{eyre::ContextCompat, Result};
 use hl7_parser::parse_message_with_lenient_newlines;
 use lsp_textdocument::TextDocuments;
 use lsp_types::{Hover, HoverContents, HoverParams, MarkedString};
@@ -29,8 +26,18 @@ pub fn handle_hover_request(
 
     let parse_span = tracing::trace_span!("parse message");
     let _parse_span_guard = parse_span.enter();
-    let message = parse_message_with_lenient_newlines(text)
-        .wrap_err_with(|| "Failed to parse HL7 message")?;
+    let message = match parse_message_with_lenient_newlines(text) {
+        Ok(message) => message,
+        Err(e) => {
+            tracing::debug!(error = %e, "Failed to parse message");
+            return Ok(Hover {
+                contents: HoverContents::Scalar(MarkedString::from_markdown(
+                    "Failed to parse HL7 message".to_string(),
+                )),
+                range: None,
+            });
+        }
+    };
     drop(_parse_span_guard);
 
     let locate_span = tracing::trace_span!("locate cursor");

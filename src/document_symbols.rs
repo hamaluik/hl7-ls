@@ -1,8 +1,5 @@
 use crate::{spec, utils::std_range_to_lsp_range};
-use color_eyre::{
-    eyre::{Context, ContextCompat},
-    Result,
-};
+use color_eyre::{eyre::ContextCompat, Result};
 use hl7_parser::{
     message::{Field, Repeat, Segment},
     Message,
@@ -23,8 +20,13 @@ pub fn handle_document_symbols_request(
 
     let parse_span = tracing::trace_span!("parse message");
     let _parse_span_guard = parse_span.enter();
-    let message = hl7_parser::parse_message_with_lenient_newlines(text)
-        .wrap_err_with(|| "Failed to parse HL7 message")?;
+    let message = match hl7_parser::parse_message_with_lenient_newlines(text) {
+        Ok(message) => message,
+        Err(e) => {
+            tracing::debug!(error = %e, "Failed to parse message");
+            return Ok(Vec::new());
+        }
+    };
     drop(_parse_span_guard);
 
     let mut version = message
