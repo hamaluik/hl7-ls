@@ -1,6 +1,7 @@
 use crate::{
     spec,
     utils::{position_to_offset, range_from_offsets},
+    workspace::specs::WorkspaceSpecs,
 };
 use chrono::{DateTime, Local, Utc};
 use color_eyre::{
@@ -12,8 +13,12 @@ use lsp_textdocument::TextDocuments;
 use lsp_types::{Hover, HoverContents, HoverParams, MarkedString};
 use tracing::instrument;
 
-#[instrument(level = "debug", skip(params, documents))]
-pub fn handle_hover_request(params: HoverParams, documents: &TextDocuments) -> Result<Hover> {
+#[instrument(level = "debug", skip(params, documents, workspace_specs))]
+pub fn handle_hover_request(
+    params: HoverParams,
+    documents: &TextDocuments,
+    workspace_specs: Option<&WorkspaceSpecs>,
+) -> Result<Hover> {
     let uri = params.text_document_position_params.text_document.uri;
     let text = documents
         .get_document_content(&uri, None)
@@ -41,6 +46,7 @@ pub fn handle_hover_request(params: HoverParams, documents: &TextDocuments) -> R
     let mut hover_text = format!("`{location}`");
     let mut url = None;
     let mut timestamp = None;
+    let mut has_workspace_description = false;
     if let Some(seg) = location.segment {
         let message_version = message
             .query("MSH.12")
@@ -68,6 +74,23 @@ pub fn handle_hover_request(params: HoverParams, documents: &TextDocuments) -> R
                 .repeat
                 .map(|r| r.1.has_components())
                 .unwrap_or(false);
+
+            if let Some(workspace_specs) = workspace_specs {
+                let workspace_description = workspace_specs.describe_field(&uri, seg.0, field.0);
+                if !workspace_description.is_empty() {
+                    hover_text.push_str(
+                        format!(
+                            "\n  **{segment}.{field}{repeat}**: {workspace_description}†",
+                            segment = seg.0,
+                            field = field.0,
+                            repeat = repeat,
+                            workspace_description = workspace_description,
+                        )
+                        .as_str(),
+                    );
+                    has_workspace_description = true;
+                }
+            }
 
             hover_text.push_str(
                 format!(
@@ -158,7 +181,7 @@ pub fn handle_hover_request(params: HoverParams, documents: &TextDocuments) -> R
         }
     }
 
-    if url.is_some() || timestamp.is_some() {
+    if url.is_some() || timestamp.is_some() || has_workspace_description {
         hover_text.push_str("\n\n---");
     }
 
@@ -167,6 +190,9 @@ pub fn handle_hover_request(params: HoverParams, documents: &TextDocuments) -> R
     }
     if let Some(url) = url {
         hover_text.push_str(format!("\n\n**More info**: [{url}]({url})").as_str());
+    }
+    if has_workspace_description {
+        hover_text.push_str("\n\n†: Workspace description");
     }
 
     // figure out the most relevant hover range

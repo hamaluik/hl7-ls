@@ -1,0 +1,14 @@
+disable_default = false
+
+[[segments]]
+name = "MSH"
+[segments.fields.10]
+description = "Message ID #"
+
+[[segments]]
+name = "PID"
+[segments.fields.3]
+description = "MRN"
+[segments.fields.4]
+description = "Enterprise ID"
+

@@ -23,6 +23,7 @@ A Language Server for HL7v2 messages implementing [LSP 3.17](https://microsoft.g
 - Selection Range
 - Semantic Tokens
 - Signature Help
+- Custom validations
 
 ### Not Planned
 

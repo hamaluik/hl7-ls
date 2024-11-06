@@ -3,7 +3,9 @@ use color_eyre::eyre::Context;
 use color_eyre::Result;
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError};
 use lsp_textdocument::TextDocuments;
-use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument};
+use lsp_types::notification::{
+    self, DidChangeTextDocument, DidOpenTextDocument, LogMessage, Notification,
+};
 use lsp_types::request::{
     ApplyWorkspaceEdit, CodeActionRequest, CodeLensRequest, Completion, DocumentSymbolRequest,
     ExecuteCommand, HoverRequest, Request as LspRequest,
@@ -11,8 +13,8 @@ use lsp_types::request::{
 use lsp_types::{
     ApplyWorkspaceEditParams, ClientCapabilities, CodeActionOptions, CodeActionProviderCapability,
     CodeLensOptions, CompletionOptions, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    ExecuteCommandOptions, HoverProviderCapability, OneOf, PositionEncodingKind,
-    TextDocumentSyncCapability, TextDocumentSyncKind,
+    ExecuteCommandOptions, HoverProviderCapability, LogMessageParams, MessageType, OneOf,
+    PositionEncodingKind, TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceFolder,
 };
 use lsp_types::{InitializeParams, ServerCapabilities};
 use std::fs::{self};
@@ -34,6 +36,7 @@ mod hover;
 pub mod spec;
 pub mod utils;
 mod validation;
+mod workspace;
 
 fn setup_logging(cli: Cli) -> Result<()> {
     let use_colours = match (cli.colour, &cli.command) {
@@ -112,13 +115,17 @@ fn main() -> Result<()> {
     let cli = cli::cli();
     setup_logging(cli).wrap_err_with(|| "Failed to setup logging")?;
 
+    let initial_span = tracing::info_span!("initialise");
+    let _initial_span_guard = initial_span.enter();
     tracing::info!("Starting HL7 Language Server");
     let (connection, io_threads) = Connection::stdio();
 
     let (id, params) = connection.initialize_start()?;
     let init_params: InitializeParams = serde_json::from_value(params).unwrap();
     tracing::info!(client_info = ?init_params.client_info, "client connected");
-    let client_capabilities: ClientCapabilities = init_params.capabilities;
+    tracing::debug!(?init_params.workspace_folders, "workspace folders");
+    let client_capabilities = init_params.capabilities;
+    let workspace_folders = init_params.workspace_folders;
 
     let client_supports_utf8_positions = client_capabilities
         .general
@@ -177,17 +184,42 @@ fn main() -> Result<()> {
     connection
         .initialize_finish(id, initialize_data)
         .wrap_err_with(|| "Failed to finish LSP initialisation")?;
+    drop(_initial_span_guard);
 
-    main_loop(connection, client_capabilities)?;
+    main_loop(connection, client_capabilities, workspace_folders)?;
     io_threads.join()?;
 
     // Shut down gracefully.
-    tracing::info!("Shutting down");
+    tracing::info!("Shutting down\n");
     Ok(())
 }
 
-#[instrument(level = "debug", skip(connection, client_capabilities))]
-fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) -> Result<()> {
+fn send_log_message<S: ToString>(
+    connection: &Connection,
+    message_type: MessageType,
+    message: S,
+) -> Result<()> {
+    connection
+        .sender
+        .send(Message::Notification(lsp_server::Notification::new(
+            LogMessage::METHOD.to_string(),
+            LogMessageParams {
+                typ: message_type,
+                message: message.to_string(),
+            },
+        )))
+        .wrap_err_with(|| "Failed to send log message")
+}
+
+#[instrument(
+    level = "debug",
+    skip(connection, client_capabilities, workspace_folders)
+)]
+fn main_loop(
+    connection: Connection,
+    client_capabilities: ClientCapabilities,
+    workspace_folders: Option<Vec<WorkspaceFolder>>,
+) -> Result<()> {
     let mut documents = TextDocuments::new();
 
     let diagnostics_enabled = client_capabilities
@@ -195,8 +227,26 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
         .as_ref()
         .map(|tdc| tdc.publish_diagnostics.is_some())
         .unwrap_or(false);
+    tracing::debug!("diagnostics enabled: {diagnostics_enabled}");
+
+    let load_custom_validators_span = tracing::debug_span!("load_custom_validators");
+    let _load_custom_validators_span_guard = load_custom_validators_span.enter();
+    let workspace = workspace_folders
+        .map(workspace::Workspace::new)
+        .transpose()
+        .wrap_err_with(|| "Failed to load custom validators")?;
+    if workspace.is_some() {
+        tracing::info!("Custom validators loaded");
+        send_log_message(&connection, MessageType::INFO, "Custom validators loaded")
+            .wrap_err_with(|| "Failed to send log message")?;
+    } else {
+        tracing::info!("No custom validators found");
+    }
+    drop(_load_custom_validators_span_guard);
 
     tracing::debug!("starting main loop");
+    // TODO: select on this _and_ the custom spec changes channel
+    // to publish diagnostics on change
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
@@ -211,7 +261,12 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                 let req = match cast_request::<HoverRequest>(req) {
                     Ok((id, params)) => {
                         tracing::debug!("got Hover request");
-                        let resp = hover::handle_hover_request(params, &documents).map_err(|e| {
+                        let resp = hover::handle_hover_request(
+                            params,
+                            &documents,
+                            workspace.as_ref().map(|w| &*w.specs),
+                        )
+                        .map_err(|e| {
                             tracing::warn!("Failed to handle hover request: {e:?}");
                             e
                         });
@@ -409,18 +464,20 @@ fn main_loop(connection: Connection, client_capabilities: ClientCapabilities) ->
                     // document was updated, update diagnostics
                     // first, extract the uri
                     let (uri, version) = match not.method.as_str() {
-                        <DidOpenTextDocument as lsp_types::notification::Notification>::METHOD => {
-                            let params: DidOpenTextDocumentParams = serde_json::from_value(not.params.clone())
-                                .expect("Expect receive DidOpenTextDocumentParams");
+                        <DidOpenTextDocument as notification::Notification>::METHOD => {
+                            let params: DidOpenTextDocumentParams =
+                                serde_json::from_value(not.params.clone())
+                                    .expect("Expect receive DidOpenTextDocumentParams");
                             let text_document = params.text_document;
                             (Some(text_document.uri), Some(text_document.version))
-                        },
-                        <DidChangeTextDocument as lsp_types::notification::Notification>::METHOD => {
-                            let params: DidChangeTextDocumentParams = serde_json::from_value(not.params.clone())
-                                .expect("Expect receive DidChangeTextDocumentParams");
+                        }
+                        <DidChangeTextDocument as notification::Notification>::METHOD => {
+                            let params: DidChangeTextDocumentParams =
+                                serde_json::from_value(not.params.clone())
+                                    .expect("Expect receive DidChangeTextDocumentParams");
                             let text_document = params.text_document;
                             (Some(text_document.uri), Some(text_document.version))
-                        },
+                        }
                         _ => (None, None),
                     };
 
