@@ -4,11 +4,11 @@ use lsp_types::{Diagnostic, DiagnosticSeverity};
 use std::{fmt, ops::Range};
 use tracing::instrument;
 
+mod datatypes;
 mod length;
 mod msh;
 mod optionality;
 mod table_values;
-mod timestamps;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ValidationCode {
@@ -17,6 +17,7 @@ pub enum ValidationCode {
     InvalidTimestamp,
     InvalidLength,
     InvalidOptionality,
+    InvalidDataType(&'static str),
 }
 
 #[derive(Debug, Clone)]
@@ -75,9 +76,10 @@ pub fn validate_message(message: &Message) -> Vec<ValidationError> {
     // TODO: these all iterate over the message multiple times; maybe it would
     // be more performant to iterate once and check each rule at the same time?
     errors.extend(optionality::validate_message(message, version));
-    errors.extend(timestamps::validate_message(message, version));
     errors.extend(length::validate_message(message, version));
     errors.extend(table_values::validate_message(message, version));
+    errors.extend(datatypes::validate_message(message, version));
+    // TODO: message schema validation
 
     errors
 }
@@ -90,6 +92,7 @@ impl fmt::Display for ValidationCode {
             ValidationCode::InvalidTimestamp => write!(f, "timestamp"),
             ValidationCode::InvalidLength => write!(f, "length"),
             ValidationCode::InvalidOptionality => write!(f, "optionality"),
+            ValidationCode::InvalidDataType(description) => write!(f, "data type ({description})"),
         }
     }
 }
