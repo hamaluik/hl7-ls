@@ -7,12 +7,12 @@ use lsp_types::notification::{
     self, DidChangeTextDocument, DidOpenTextDocument, LogMessage, Notification,
 };
 use lsp_types::request::{
-    ApplyWorkspaceEdit, CodeActionRequest, CodeLensRequest, Completion, DocumentSymbolRequest,
+    ApplyWorkspaceEdit, CodeActionRequest, Completion, DocumentSymbolRequest,
     ExecuteCommand, HoverRequest, Request as LspRequest,
 };
 use lsp_types::{
     ApplyWorkspaceEditParams, ClientCapabilities, CodeActionOptions, CodeActionProviderCapability,
-    CodeLensOptions, CompletionOptions, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    CompletionOptions, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     ExecuteCommandOptions, HoverProviderCapability, LogMessageParams, MessageType, OneOf,
     PositionEncodingKind, TextDocumentSyncCapability, TextDocumentSyncKind, Uri, WorkspaceFolder,
 };
@@ -29,7 +29,7 @@ use workspace::Workspace;
 
 mod cli;
 mod code_actions;
-mod codelens;
+// mod codelens;
 mod commands;
 mod completion;
 mod diagnostics;
@@ -156,9 +156,6 @@ fn main() -> Result<()> {
         })),
         completion_provider: Some(CompletionOptions {
             ..Default::default()
-        }),
-        code_lens_provider: Some(CodeLensOptions {
-            resolve_provider: Some(false),
         }),
         code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
             code_action_kinds: Some(vec![lsp_types::CodeActionKind::QUICKFIX]),
@@ -330,25 +327,6 @@ fn main_loop(
                         let resp = code_actions::handle_code_actions_request(params, &documents)
                             .map_err(|e| {
                                 tracing::warn!("Failed to handle code action request: {e:?}");
-                                e
-                            });
-                        let resp = build_response(id, resp);
-                        connection
-                            .sender
-                            .send(Message::Response(resp))
-                            .expect("can send response");
-                        continue;
-                    }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
-
-                let req = match cast_request::<CodeLensRequest>(req) {
-                    Ok((id, params)) => {
-                        tracing::trace!(id = ?id, "got CodeLens request");
-                        let resp =
-                            codelens::handle_codelens_request(params, &documents).map_err(|e| {
-                                tracing::warn!("Failed to handle codelens request: {e:?}");
                                 e
                             });
                         let resp = build_response(id, resp);

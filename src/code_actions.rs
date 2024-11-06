@@ -56,7 +56,7 @@ fn generate_control_id(uri: &Uri, message: &Message) -> Option<CodeAction> {
 
         CodeAction {
             title: "Generate new control ID".to_string(),
-            kind: Some(CodeActionKind::QUICKFIX),
+            kind: Some(CodeActionKind::REFACTOR),
             diagnostics: None,
             edit: Some(WorkspaceEdit {
                 changes: Some(changes),
