@@ -1,7 +1,7 @@
 use color_eyre::eyre::{Context, Result};
 use crossbeam_channel::{Receiver, Sender};
 use lsp_types::WorkspaceFolder;
-use notify::{Event, INotifyWatcher, Watcher};
+use notify::{Event, RecommendedWatcher, Watcher};
 use specs::WorkspaceSpecs;
 use std::{path::PathBuf, sync::Arc, thread::JoinHandle};
 use tracing::instrument;
@@ -10,7 +10,7 @@ pub mod specs;
 
 pub struct Workspace {
     pub _folders: Vec<PathBuf>,
-    _watcher: INotifyWatcher,
+    _watcher: RecommendedWatcher,
     pub specs: Arc<WorkspaceSpecs>,
     _watch_handle: JoinHandle<()>,
     pub _custom_spec_changes: Receiver<()>,
