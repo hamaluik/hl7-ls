@@ -22,9 +22,6 @@ fn is_a_validator<P: AsRef<Path>>(path: P) -> bool {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
 pub struct WorkspaceSpec {
-    /// If set to true, the default validations and completions will be disabled.
-    pub disable_default: Option<bool>,
-
     /// Name of the custom spec
     pub name: String,
 
@@ -153,6 +150,21 @@ impl WorkspaceSpecs {
             .is_some()
     }
 
+    // TODO: rewrite this without cloning
+    // pub fn specs_for_uri(&self, uri: &Uri) -> Vec<WorkspaceSpec> {
+    //     (&self.specs)
+    //         .into_iter()
+    //         .filter_map(|x| {
+    //             let (path, spec) = x.pair();
+    //             if WorkspaceSpecs::spec_applies_to_uri(path, uri) {
+    //                 Some(spec.clone())
+    //             } else {
+    //                 None
+    //             }
+    //         })
+    //         .collect()
+    // }
+
     pub fn describe_field(&self, uri: &Uri, segment: &str, field: usize) -> String {
         (&self.specs)
             .into_iter()
@@ -213,25 +225,25 @@ impl WorkspaceSpecs {
             .join("\n")
     }
 
-    // pub fn table_values(&self, uri: &Uri, segment: &str, field: usize) -> Vec<(String, String)> {
-    //     (&self.specs)
-    //         .into_iter()
-    //         .filter_map(|x| {
-    //             let (path, spec) = x.pair();
-    //             if !WorkspaceSpecs::spec_applies_to_uri(path, uri) {
-    //                 return None;
-    //             }
-    //
-    //             spec.segments
-    //                 .iter()
-    //                 .find(|s| s.name == segment)
-    //                 .and_then(|s| s.fields.get(&field))
-    //                 .map(|f| f.allowed_values.as_ref().map(|v| v.clone()))
-    //         })
-    //         .flatten()
-    //         .next() // TODO: merge allowed values? or only pick one? or group by validation?
-    //         .unwrap_or_default()
-    // }
+    pub fn table_values(&self, uri: &Uri, segment: &str, field: usize) -> Vec<(String, String)> {
+        (&self.specs)
+            .into_iter()
+            .filter_map(|x| {
+                let (path, spec) = x.pair();
+                if !WorkspaceSpecs::spec_applies_to_uri(path, uri) {
+                    return None;
+                }
+
+                spec.segments
+                    .iter()
+                    .find(|s| s.name == segment)
+                    .and_then(|s| s.fields.get(&field))
+                    .map(|f| f.allowed_values.clone())
+            })
+            .flatten()
+            .next() // TODO: merge allowed values? or only pick one? or group by validation?
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -241,7 +253,6 @@ mod tests {
     #[test]
     fn spec_can_roundtrip_with_toml() {
         let my_spec = WorkspaceSpec {
-            disable_default: None,
             name: "My Custom Spec".to_string(),
             segments: vec![
                 SegmentSpec {

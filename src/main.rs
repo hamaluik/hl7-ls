@@ -14,16 +14,18 @@ use lsp_types::{
     ApplyWorkspaceEditParams, ClientCapabilities, CodeActionOptions, CodeActionProviderCapability,
     CodeLensOptions, CompletionOptions, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     ExecuteCommandOptions, HoverProviderCapability, LogMessageParams, MessageType, OneOf,
-    PositionEncodingKind, TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceFolder,
+    PositionEncodingKind, TextDocumentSyncCapability, TextDocumentSyncKind, Uri, WorkspaceFolder,
 };
 use lsp_types::{InitializeParams, ServerCapabilities};
 use std::fs::{self};
 use std::io::IsTerminal;
+use std::ops::Deref;
 use tracing::instrument;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{filter, prelude::*, Registry};
 use utils::build_response;
+use workspace::Workspace;
 
 mod cli;
 mod code_actions;
@@ -232,7 +234,7 @@ fn main_loop(
     let load_custom_validators_span = tracing::debug_span!("load_custom_validators");
     let _load_custom_validators_span_guard = load_custom_validators_span.enter();
     let workspace = workspace_folders
-        .map(workspace::Workspace::new)
+        .map(Workspace::new)
         .transpose()
         .wrap_err_with(|| "Failed to load custom validators")?;
     if workspace.is_some() {
@@ -481,40 +483,55 @@ fn main_loop(
                         _ => (None, None),
                     };
 
-                    let text = uri
-                        .as_ref()
-                        .and_then(|uri| documents.get_document_content(uri, None));
-                    if let Some(text) = text {
-                        let parse_and_validate_span = tracing::debug_span!("parse and validate");
-                        let _parse_and_validate_span_guard = parse_and_validate_span.enter();
-                        let errors = match hl7_parser::parse_message_with_lenient_newlines(text) {
-                            Ok(message) => validation::validate_message(&message)
-                                .into_iter()
-                                .map(|e| e.into_diagnostic(text))
-                                .collect(),
-                            Err(err) => vec![diagnostics::parse_error_to_diagnostic(text, err)],
-                        };
-                        drop(_parse_and_validate_span_guard);
-                        let publish_diagnostics_span = tracing::debug_span!("publish diagnostics");
-                        let _publish_diagnostics_span_guard = publish_diagnostics_span.enter();
-                        if errors.is_empty() {
-                            diagnostics::clear_diagnostics(&connection, uri.expect("document uri"));
-                        } else {
-                            diagnostics::publish_parse_error_diagnostics(
-                                &connection,
-                                uri.expect("document uri"),
-                                errors,
-                                version,
-                            );
+                    if let Some(uri) = uri {
+                        if let Err(e) =
+                            handle_diagnostics(&connection, &uri, version, &documents, &workspace)
+                        {
+                            tracing::error!("Failed to handle diagnostics: {e:?}");
                         }
-                    } else {
-                        diagnostics::clear_diagnostics(&connection, uri.expect("document uri"));
                     }
                 } else {
                     tracing::warn!("unhandled notification: {not:?}");
                 }
             }
         }
+    }
+    Ok(())
+}
+
+#[instrument(level = "debug", skip(connection, documents, workspace))]
+fn handle_diagnostics(
+    connection: &Connection,
+    uri: &Uri,
+    version: Option<i32>,
+    documents: &TextDocuments,
+    workspace: &Option<Workspace>,
+) -> Result<()> {
+    let text = documents.get_document_content(uri, None);
+    if let Some(text) = text {
+        let parse_and_validate_span = tracing::debug_span!("parse and validate");
+        let _parse_and_validate_span_guard = parse_and_validate_span.enter();
+        let errors = match hl7_parser::parse_message_with_lenient_newlines(text) {
+            Ok(message) => validation::validate_message(
+                uri,
+                &message,
+                &workspace.as_ref().map(|w| w.specs.deref()),
+            )
+            .into_iter()
+            .map(|e| e.into_diagnostic(text))
+            .collect(),
+            Err(err) => vec![diagnostics::parse_error_to_diagnostic(text, err)],
+        };
+        drop(_parse_and_validate_span_guard);
+        let publish_diagnostics_span = tracing::debug_span!("publish diagnostics");
+        let _publish_diagnostics_span_guard = publish_diagnostics_span.enter();
+        if errors.is_empty() {
+            diagnostics::clear_diagnostics(connection, uri.clone());
+        } else {
+            diagnostics::publish_parse_error_diagnostics(connection, uri.clone(), errors, version);
+        }
+    } else {
+        diagnostics::clear_diagnostics(connection, uri.clone());
     }
     Ok(())
 }

@@ -1,6 +1,9 @@
-use crate::utils::position_from_offset;
+use crate::{
+    utils::position_from_offset,
+    workspace::specs::WorkspaceSpecs,
+};
 use hl7_parser::Message;
-use lsp_types::{Diagnostic, DiagnosticSeverity};
+use lsp_types::{Diagnostic, DiagnosticSeverity, Uri};
 use std::{fmt, ops::Range};
 use tracing::instrument;
 
@@ -57,8 +60,12 @@ impl ValidationError {
     }
 }
 
-#[instrument(level = "debug", skip(message))]
-pub fn validate_message(message: &Message) -> Vec<ValidationError> {
+#[instrument(level = "debug", skip(message, workspace_specs))]
+pub fn validate_message(
+    uri: &Uri,
+    message: &Message,
+    workspace_specs: &Option<&WorkspaceSpecs>,
+) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     if message.segments().count() < 2 {
         errors.push(ValidationError::new(
@@ -77,7 +84,12 @@ pub fn validate_message(message: &Message) -> Vec<ValidationError> {
     // be more performant to iterate once and check each rule at the same time?
     errors.extend(optionality::validate_message(message, version));
     errors.extend(length::validate_message(message, version));
-    errors.extend(table_values::validate_message(message, version));
+    errors.extend(table_values::validate_message(
+        uri,
+        message,
+        version,
+        workspace_specs,
+    ));
     errors.extend(datatypes::validate_message(message, version));
     // TODO: message schema validation
 
