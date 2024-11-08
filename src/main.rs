@@ -275,195 +275,15 @@ fn main_loop(
                     return Ok(());
                 }
 
-                let req = match cast_request::<HoverRequest>(req) {
-                    Ok((id, params)) => {
-                        tracing::debug!("got Hover request");
-                        let resp = hover::handle_hover_request(
-                            params,
-                            &documents,
-                            workspace.as_ref().map(|w| &*w.specs),
-                            &opts,
-                        )
-                        .map_err(|e| {
-                            tracing::warn!("Failed to handle hover request: {e:?}");
-                            e
-                        });
-                        let resp = build_response(id, resp);
-                        connection
-                            .sender
-                            .send(Message::Response(resp))
-                            .expect("can send response");
-                        continue;
-                    }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
-
-                let req = match cast_request::<DocumentSymbolRequest>(req) {
-                    Ok((id, params)) => {
-                        tracing::debug!("got DocumentSymbol request");
-                        let resp =
-                            document_symbols::handle_document_symbols_request(params, &documents)
-                                .map_err(|e| {
-                                    tracing::warn!(
-                                        "Failed to handle document symbols request: {e:?}"
-                                    );
-                                    e
-                                });
-                        let resp = build_response(id, resp);
-                        connection
-                            .sender
-                            .send(Message::Response(resp))
-                            .expect("can send response");
-                        continue;
-                    }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
-
-                let req = match cast_request::<Completion>(req) {
-                    Ok((id, params)) => {
-                        tracing::debug!("got Completion request");
-                        let resp = completion::handle_completion_request(params, &documents)
-                            .map_err(|e| {
-                                tracing::warn!("Failed to handle completion request: {e:?}");
-                                e
-                            });
-                        let resp = build_response(id, resp);
-                        connection
-                            .sender
-                            .send(Message::Response(resp))
-                            .expect("can send response");
-                        continue;
-                    }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
-
-                let req = match cast_request::<CodeActionRequest>(req) {
-                    Ok((id, params)) => {
-                        tracing::debug!("got CodeAction request");
-                        let resp = code_actions::handle_code_actions_request(params, &documents)
-                            .map_err(|e| {
-                                tracing::warn!("Failed to handle code action request: {e:?}");
-                                e
-                            });
-                        let resp = build_response(id, resp);
-                        connection
-                            .sender
-                            .send(Message::Response(resp))
-                            .expect("can send response");
-                        continue;
-                    }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
-
-                let req = match cast_request::<ExecuteCommand>(req) {
-                    Ok((id, params)) => {
-                        tracing::debug!("got ExecuteCommand request");
-                        let result = commands::handle_execute_command_request(params, &documents)
-                            .map_err(|e| {
-                                tracing::warn!("Failed to handle execute command request: {e:?}");
-                                e
-                            });
-
-                        let (edit, resp) = match result {
-                            Ok(Some(command_result)) => match command_result {
-                                commands::CommandResult::WorkspaceEdit { label, edit } => (
-                                    Some((label, edit)),
-                                    Response {
-                                        id,
-                                        result: Some(serde_json::Value::Bool(true)),
-                                        error: None,
-                                    },
-                                ),
-                                commands::CommandResult::SentMessage { response } => (
-                                    None,
-                                    Response {
-                                        id,
-                                        result: Some(serde_json::Value::String(response)),
-                                        error: None,
-                                    },
-                                ),
-                            },
-                            Ok(None) => (
-                                None,
-                                Response {
-                                    id,
-                                    result: Some(serde_json::Value::Null),
-                                    error: Some(ResponseError {
-                                        code: lsp_server::ErrorCode::RequestFailed as i32,
-                                        message: "Unknown command".to_string(),
-                                        data: None,
-                                    }),
-                                },
-                            ),
-                            Err(error) => (
-                                None,
-                                Response {
-                                    id,
-                                    result: None,
-                                    error: Some(ResponseError {
-                                        code: lsp_server::ErrorCode::InternalError as i32,
-                                        message: format!("{error:#}"),
-                                        data: None,
-                                    }),
-                                },
-                            ),
-                        };
-                        connection
-                            .sender
-                            .send(Message::Response(resp))
-                            .expect("can send response");
-
-                        if let Some((label, edit)) = edit {
-                            let apply_edit_span = tracing::debug_span!("apply edit");
-                            let _apply_edit_span_guard = apply_edit_span.enter();
-                            let apply_edit_params = ApplyWorkspaceEditParams {
-                                label: Some(label.to_string()),
-                                edit,
-                            };
-                            let request_id: i32 = rand::random();
-                            tracing::trace!(?apply_edit_params, ?request_id, "sending apply edit");
-                            let apply_edit_req = Request {
-                                id: request_id.into(),
-                                method: ApplyWorkspaceEdit::METHOD.to_string(),
-                                params: serde_json::to_value(apply_edit_params).unwrap(),
-                            };
-                            connection
-                                .sender
-                                .send(Message::Request(apply_edit_req))
-                                .expect("can send request");
-                        }
-
-                        continue;
-                    }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
-
-                let req = match cast_request::<SelectionRangeRequest>(req) {
-                    Ok((id, params)) => {
-                        tracing::debug!("got SelectionRange request");
-                        let resp =
-                            selection_range::handle_selection_range_request(params, &documents)
-                                .map_err(|e| {
-                                    tracing::warn!("Failed to handle code action request: {e:?}");
-                                    e
-                                });
-                        let resp = build_response(id, resp);
-                        connection
-                            .sender
-                            .send(Message::Response(resp))
-                            .expect("can send response");
-                        continue;
-                    }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
-
-                tracing::warn!("unhandled request: {req:?}");
+                if let Some(req) = handle_hover_req(req, &documents, &workspace, &opts, &connection)
+                    .and_then(|req| handle_document_symbols_req(req, &documents, &connection))
+                    .and_then(|req| handle_completion_request(req, &documents, &connection))
+                    .and_then(|req| handle_code_action_request(req, &documents, &connection))
+                    .and_then(|req| handle_command_request(req, &documents, &connection))
+                    .and_then(|req| handle_selection_range_req(req, &documents, &connection))
+                {
+                    tracing::warn!("unhandled request: {req:?}");
+                }
             }
             Message::Response(resp) => {
                 tracing::warn!(response = ?resp, "got response from server??");
@@ -566,4 +386,224 @@ where
     R::Params: serde::de::DeserializeOwned,
 {
     req.extract(R::METHOD)
+}
+
+fn handle_hover_req(
+    req: Request,
+    documents: &TextDocuments,
+    workspace: &Option<Workspace>,
+    opts: &Opts,
+    connection: &Connection,
+) -> Option<Request> {
+    match cast_request::<HoverRequest>(req) {
+        Ok((id, params)) => {
+            tracing::debug!("got Hover request");
+            let resp = hover::handle_hover_request(
+                params,
+                documents,
+                workspace.as_ref().map(|w| &*w.specs),
+                opts,
+            )
+            .map_err(|e| {
+                tracing::warn!("Failed to handle hover request: {e:?}");
+                e
+            });
+            let resp = build_response(id, resp);
+            connection
+                .sender
+                .send(Message::Response(resp))
+                .expect("can send response");
+            None
+        }
+        Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+        Err(ExtractError::MethodMismatch(req)) => Some(req),
+    }
+}
+
+fn handle_document_symbols_req(
+    req: Request,
+    documents: &TextDocuments,
+    connection: &Connection,
+) -> Option<Request> {
+    match cast_request::<DocumentSymbolRequest>(req) {
+        Ok((id, params)) => {
+            tracing::debug!("got DocumentSymbol request");
+            let resp = document_symbols::handle_document_symbols_request(params, documents)
+                .map_err(|e| {
+                    tracing::warn!("Failed to handle document symbols request: {e:?}");
+                    e
+                });
+            let resp = build_response(id, resp);
+            connection
+                .sender
+                .send(Message::Response(resp))
+                .expect("can send response");
+            None
+        }
+        Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+        Err(ExtractError::MethodMismatch(req)) => Some(req),
+    }
+}
+
+fn handle_completion_request(
+    req: Request,
+    documents: &TextDocuments,
+    connection: &Connection,
+) -> Option<Request> {
+    match cast_request::<Completion>(req) {
+        Ok((id, params)) => {
+            tracing::debug!("got Completion request");
+            let resp = completion::handle_completion_request(params, documents).map_err(|e| {
+                tracing::warn!("Failed to handle completion request: {e:?}");
+                e
+            });
+            let resp = build_response(id, resp);
+            connection
+                .sender
+                .send(Message::Response(resp))
+                .expect("can send response");
+            None
+        }
+        Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+        Err(ExtractError::MethodMismatch(req)) => Some(req),
+    }
+}
+
+fn handle_code_action_request(
+    req: Request,
+    documents: &TextDocuments,
+    connection: &Connection,
+) -> Option<Request> {
+    match cast_request::<CodeActionRequest>(req) {
+        Ok((id, params)) => {
+            tracing::debug!("got CodeAction request");
+            let resp = code_actions::handle_code_actions_request(params, documents).map_err(|e| {
+                tracing::warn!("Failed to handle code action request: {e:?}");
+                e
+            });
+            let resp = build_response(id, resp);
+            connection
+                .sender
+                .send(Message::Response(resp))
+                .expect("can send response");
+            None
+        }
+        Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+        Err(ExtractError::MethodMismatch(req)) => Some(req),
+    }
+}
+
+fn handle_command_request(
+    req: Request,
+    documents: &TextDocuments,
+    connection: &Connection,
+) -> Option<Request> {
+    match cast_request::<ExecuteCommand>(req) {
+        Ok((id, params)) => {
+            tracing::debug!("got ExecuteCommand request");
+            let result =
+                commands::handle_execute_command_request(params, documents).map_err(|e| {
+                    tracing::warn!("Failed to handle execute command request: {e:?}");
+                    e
+                });
+
+            let (edit, resp) = match result {
+                Ok(Some(command_result)) => match command_result {
+                    commands::CommandResult::WorkspaceEdit { label, edit } => (
+                        Some((label, edit)),
+                        Response {
+                            id,
+                            result: Some(serde_json::Value::Bool(true)),
+                            error: None,
+                        },
+                    ),
+                    commands::CommandResult::SentMessage { response } => (
+                        None,
+                        Response {
+                            id,
+                            result: Some(serde_json::Value::String(response)),
+                            error: None,
+                        },
+                    ),
+                },
+                Ok(None) => (
+                    None,
+                    Response {
+                        id,
+                        result: Some(serde_json::Value::Null),
+                        error: Some(ResponseError {
+                            code: lsp_server::ErrorCode::RequestFailed as i32,
+                            message: "Unknown command".to_string(),
+                            data: None,
+                        }),
+                    },
+                ),
+                Err(error) => (
+                    None,
+                    Response {
+                        id,
+                        result: None,
+                        error: Some(ResponseError {
+                            code: lsp_server::ErrorCode::InternalError as i32,
+                            message: format!("{error:#}"),
+                            data: None,
+                        }),
+                    },
+                ),
+            };
+            connection
+                .sender
+                .send(Message::Response(resp))
+                .expect("can send response");
+
+            if let Some((label, edit)) = edit {
+                let apply_edit_span = tracing::debug_span!("apply edit");
+                let _apply_edit_span_guard = apply_edit_span.enter();
+                let apply_edit_params = ApplyWorkspaceEditParams {
+                    label: Some(label.to_string()),
+                    edit,
+                };
+                let request_id: i32 = rand::random();
+                tracing::trace!(?apply_edit_params, ?request_id, "sending apply edit");
+                let apply_edit_req = Request {
+                    id: request_id.into(),
+                    method: ApplyWorkspaceEdit::METHOD.to_string(),
+                    params: serde_json::to_value(apply_edit_params).unwrap(),
+                };
+                connection
+                    .sender
+                    .send(Message::Request(apply_edit_req))
+                    .expect("can send request");
+            }
+
+            None
+        }
+        Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+        Err(ExtractError::MethodMismatch(req)) => Some(req),
+    }
+}
+
+fn handle_selection_range_req(
+    req: Request,
+    documents: &TextDocuments,
+    connection: &Connection,
+) -> Option<Request> {
+    match cast_request::<SelectionRangeRequest>(req) {
+        Ok((id, params)) => {
+            tracing::debug!("got SelectionRange request");
+            let resp =
+                selection_range::handle_selection_range_request(params, documents).map_err(|e| {
+                    tracing::warn!("Failed to handle code action request: {e:?}");
+                    e
+                });
+            let resp = build_response(id, resp);
+            connection
+                .sender
+                .send(Message::Response(resp))
+                .expect("can send response");
+            None
+        }
+        Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+        Err(ExtractError::MethodMismatch(req)) => Some(req),
+    }
 }
