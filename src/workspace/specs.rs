@@ -34,7 +34,6 @@ pub struct WorkspaceSpec {
 pub struct SegmentSpec {
     pub name: String,
     pub description: Option<String>,
-    pub required: Option<bool>,
     #[serde_as(as = "HashMap<DisplayFromStr, _>")]
     pub fields: HashMap<usize, FieldSpec>,
 }

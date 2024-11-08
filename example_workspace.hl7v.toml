@@ -1,0 +1,18 @@
+name = "Example Workspace"
+
+[[segments]]
+name = "PID"
+
+[segments.fields.3]
+description = "Medical Record Number (MRN)"
+[segments.fields.4]
+description = "Enterprise ID (EID)"
+required = true
+
+[[segments]]
+name = "PV1"
+
+[segments.fields.2]
+description = "Patient Class"
+required = true
+allowed_values = [["I", "Inpatient"], ["O", "Outpatient"]] # note: the spec specifies other values, but our workspace only allows I or O
