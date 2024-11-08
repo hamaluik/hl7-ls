@@ -130,7 +130,8 @@ pub fn handle_hover_request(
 
                 if spec::is_component_a_timestamp(message_version, seg.0, field.0, component.0) {
                     timestamp = Some(
-                        match hl7_parser::timestamps::parse_timestamp(component.1.raw_value()) {
+                        match hl7_parser::datetime::parse_timestamp(component.1.raw_value(), false)
+                        {
                             Ok(ts) => {
                                 let ts_utc = ts
                                     .try_into()
@@ -159,7 +160,7 @@ pub fn handle_hover_request(
 
                 if spec::is_field_a_timestamp(message_version, seg.0, field.0) {
                     timestamp = Some(
-                        match hl7_parser::timestamps::parse_timestamp(field.1.raw_value()) {
+                        match hl7_parser::datetime::parse_timestamp(field.1.raw_value(), false) {
                             Ok(ts) => {
                                 let ts_utc = ts
                                     .try_into()

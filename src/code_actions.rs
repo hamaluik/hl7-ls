@@ -44,33 +44,31 @@ pub fn handle_code_actions_request(
 #[instrument(level = "trace", skip(uri, message))]
 fn generate_control_id(range: &Range, uri: &Uri, message: &Message) -> Option<CodeAction> {
     // only available if MSH.10 is present
-    message
-        .query("MSH.10")
-        .and_then(|existing_control_id| {
-            // only if the action range is within the existing control ID
-            let action_range = lsp_range_to_std_range(message.raw_value(), *range)?;
-            let existing_range = existing_control_id.range();
-            if action_range.start < existing_range.start || action_range.end > existing_range.end {
-                return None;
-            }
+    message.query("MSH.10").and_then(|existing_control_id| {
+        // only if the action range is within the existing control ID
+        let action_range = lsp_range_to_std_range(message.raw_value(), *range)?;
+        let existing_range = existing_control_id.range();
+        if action_range.start < existing_range.start || action_range.end > existing_range.end {
+            return None;
+        }
 
-            Some(CodeAction {
+        Some(CodeAction {
+            title: "Generate new control ID".to_string(),
+            kind: Some(CodeActionKind::REFACTOR),
+            diagnostics: None,
+            edit: None,
+            command: Some(Command {
                 title: "Generate new control ID".to_string(),
-                kind: Some(CodeActionKind::REFACTOR),
-                diagnostics: None,
-                edit: None,
-                command: Some(Command {
-                    title: "Generate new control ID".to_string(),
-                    command: CMD_GENERATE_CONTROL_ID.to_string(),
-                    arguments: Some(vec![
-                        serde_json::to_value(uri.clone()).expect("can serialize uri")
-                    ]),
-                }),
-                data: None,
-                is_preferred: None,
-                disabled: None,
-            })
+                command: CMD_GENERATE_CONTROL_ID.to_string(),
+                arguments: Some(vec![
+                    serde_json::to_value(uri.clone()).expect("can serialize uri")
+                ]),
+            }),
+            data: None,
+            is_preferred: None,
+            disabled: None,
         })
+    })
 }
 
 #[instrument(level = "trace", skip(uri, message))]

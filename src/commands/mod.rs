@@ -3,7 +3,7 @@ use color_eyre::{
     eyre::{Context, ContextCompat},
     Result,
 };
-use hl7_parser::{parse_message_with_lenient_newlines, timestamps::TimeStamp};
+use hl7_parser::{datetime::TimeStamp, parse_message_with_lenient_newlines};
 use lsp_textdocument::TextDocuments;
 use lsp_types::{ExecuteCommandParams, Range, TextEdit, Uri, WorkspaceEdit};
 use std::collections::HashMap;

@@ -11,7 +11,7 @@ pub fn segment_description(version: &str, segment: &str) -> String {
 pub fn is_field_a_timestamp(version: &str, segment: &str, field: usize) -> bool {
     hl7_definitions::get_segment(version, segment)
         .and_then(|s| s.fields.get(field - 1))
-        .map(|f| f.datatype == "TS" || f.datatype == "DTM" || f.datatype == "DRT")
+        .map(|f| f.datatype == "TS" || f.datatype == "DTM")
         .unwrap_or(false)
 }
 
@@ -25,7 +25,7 @@ pub fn is_component_a_timestamp(
         .and_then(|s| s.fields.get(field - 1))
         .and_then(|f| hl7_definitions::get_field(version, f.datatype))
         .and_then(|f| f.subfields.get(component - 1))
-        .map(|c| c.datatype == "TS" || c.datatype == "DTM" || c.datatype == "DRT")
+        .map(|c| c.datatype == "TS" || c.datatype == "DTM")
         .unwrap_or(false)
 }
 

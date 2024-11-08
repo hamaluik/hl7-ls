@@ -86,7 +86,7 @@ fn check_numeric(value: &str, range: &Range<usize>, errors: &mut Vec<ValidationE
 }
 
 fn check_timestamp(value: &str, range: &Range<usize>, errors: &mut Vec<ValidationError>) {
-    if let Err(e) = hl7_parser::timestamps::parse_timestamp(value) {
+    if let Err(e) = hl7_parser::datetime::parse_timestamp(value, false) {
         errors.push(ValidationError::new(
             ValidationCode::InvalidTimestamp,
             format!("Invalid timestamp: {e:#}"),
@@ -97,30 +97,23 @@ fn check_timestamp(value: &str, range: &Range<usize>, errors: &mut Vec<Validatio
 }
 
 fn check_date(value: &str, range: &Range<usize>, errors: &mut Vec<ValidationError>) {
-    // TODO: add date parsing to the HL7 parser; in the meantime parse as a timestamp
-    // and ensure it doesn't have a date component
-    match hl7_parser::timestamps::parse_timestamp(value) {
-        Ok(ts) => {
-            if ts.hour.is_some() || ts.offset.is_some() {
-                errors.push(ValidationError::new(
-                    ValidationCode::InvalidTimestamp,
-                    "Invalid time in date field".to_string(),
-                    range.clone(),
-                    DiagnosticSeverity::WARNING,
-                ));
-            }
-        }
-        Err(e) => {
-            errors.push(ValidationError::new(
-                ValidationCode::InvalidTimestamp,
-                format!("Invalid timestamp: {e:#}"),
-                range.clone(),
-                DiagnosticSeverity::WARNING,
-            ));
-        }
+    if let Err(e) = hl7_parser::datetime::parse_date(value, false) {
+        errors.push(ValidationError::new(
+            ValidationCode::InvalidTimestamp,
+            format!("Invalid date: {e:#}"),
+            range.clone(),
+            DiagnosticSeverity::WARNING,
+        ));
     }
 }
 
-fn check_time(_value: &str, _range: &Range<usize>, _errors: &mut Vec<ValidationError>) {
-    // TODO: add time parsing the HL7 parser
+fn check_time(value: &str, range: &Range<usize>, errors: &mut Vec<ValidationError>) {
+    if let Err(e) = hl7_parser::datetime::parse_time(value, false) {
+        errors.push(ValidationError::new(
+            ValidationCode::InvalidTimestamp,
+            format!("Invalid time: {e:#}"),
+            range.clone(),
+            DiagnosticSeverity::WARNING,
+        ));
+    }
 }
