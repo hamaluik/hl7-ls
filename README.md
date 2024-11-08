@@ -16,15 +16,16 @@ A Language Server for HL7v2 messages implementing [LSP 3.17](https://microsoft.g
 - Execute Command. Supported commands:
     * `hl7.setTimestampToNow`: Set the timestamp at the current cursor position to the current time
     * `hl7.sendMessage`: Send the current message to the given destination
+    * `hl7.generateControlId`: Set MSH.10 to a new random 20-character string
+- Selection Range
+- Custom field descriptions
 
 ### In Progress
 
-- Custom field descriptions
 - Custom validations
 
 ### Planned
 
-- Selection Range
 - Semantic Tokens
 - Signature Help
 

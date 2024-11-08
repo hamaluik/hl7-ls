@@ -8,7 +8,7 @@ use lsp_types::notification::{
 };
 use lsp_types::request::{
     ApplyWorkspaceEdit, CodeActionRequest, Completion, DocumentSymbolRequest,
-    ExecuteCommand, HoverRequest, Request as LspRequest,
+    ExecuteCommand, HoverRequest, Request as LspRequest, SelectionRangeRequest,
 };
 use lsp_types::{
     ApplyWorkspaceEditParams, ClientCapabilities, CodeActionOptions, CodeActionProviderCapability,
@@ -29,7 +29,6 @@ use workspace::Workspace;
 
 mod cli;
 mod code_actions;
-// mod codelens;
 mod commands;
 mod completion;
 mod diagnostics;
@@ -39,6 +38,7 @@ pub mod spec;
 pub mod utils;
 mod validation;
 mod workspace;
+mod selection_range;
 
 fn setup_logging(cli: Cli) -> Result<()> {
     let use_colours = match (cli.colour, &cli.command) {
@@ -174,6 +174,7 @@ fn main() -> Result<()> {
             ],
             ..Default::default()
         }),
+        selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
         ..Default::default()
     })
     .expect("can to serialize server capabilities");
@@ -426,6 +427,25 @@ fn main_loop(
                                 .expect("can send request");
                         }
 
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
+                let req = match cast_request::<SelectionRangeRequest>(req) {
+                    Ok((id, params)) => {
+                        tracing::debug!("got SelectionRange request");
+                        let resp = selection_range::handle_selection_range_request(params, &documents)
+                            .map_err(|e| {
+                                tracing::warn!("Failed to handle code action request: {e:?}");
+                                e
+                            });
+                        let resp = build_response(id, resp);
+                        connection
+                            .sender
+                            .send(Message::Response(resp))
+                            .expect("can send response");
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
