@@ -7,8 +7,8 @@ use lsp_types::notification::{
     self, DidChangeTextDocument, DidOpenTextDocument, LogMessage, Notification,
 };
 use lsp_types::request::{
-    ApplyWorkspaceEdit, CodeActionRequest, Completion, DocumentSymbolRequest,
-    ExecuteCommand, HoverRequest, Request as LspRequest, SelectionRangeRequest,
+    ApplyWorkspaceEdit, CodeActionRequest, Completion, DocumentSymbolRequest, ExecuteCommand,
+    HoverRequest, Request as LspRequest, SelectionRangeRequest,
 };
 use lsp_types::{
     ApplyWorkspaceEditParams, ClientCapabilities, CodeActionOptions, CodeActionProviderCapability,
@@ -35,10 +35,10 @@ mod diagnostics;
 mod document_symbols;
 mod hover;
 mod selection_range;
-mod validation;
-mod workspace;
 pub mod spec;
 pub mod utils;
+mod validation;
+mod workspace;
 
 fn setup_logging(cli: Cli) -> Result<()> {
     let use_colours = match (cli.colour, &cli.command) {
@@ -126,7 +126,6 @@ impl From<&Cli> for Opts {
         }
     }
 }
-
 
 fn main() -> Result<()> {
     let cli = cli::cli();
@@ -447,11 +446,12 @@ fn main_loop(
                 let req = match cast_request::<SelectionRangeRequest>(req) {
                     Ok((id, params)) => {
                         tracing::debug!("got SelectionRange request");
-                        let resp = selection_range::handle_selection_range_request(params, &documents)
-                            .map_err(|e| {
-                                tracing::warn!("Failed to handle code action request: {e:?}");
-                                e
-                            });
+                        let resp =
+                            selection_range::handle_selection_range_request(params, &documents)
+                                .map_err(|e| {
+                                    tracing::warn!("Failed to handle code action request: {e:?}");
+                                    e
+                                });
                         let resp = build_response(id, resp);
                         connection
                             .sender
@@ -501,9 +501,14 @@ fn main_loop(
                     };
 
                     if let Some(uri) = uri {
-                        if let Err(e) =
-                            handle_diagnostics(&connection, &uri, version, &documents, &workspace, &opts)
-                        {
+                        if let Err(e) = handle_diagnostics(
+                            &connection,
+                            &uri,
+                            version,
+                            &documents,
+                            &workspace,
+                            &opts,
+                        ) {
                             tracing::error!("Failed to handle diagnostics: {e:?}");
                         }
                     }

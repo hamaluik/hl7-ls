@@ -82,13 +82,13 @@ pub fn validate_message(
     // be more performant to iterate once and check each rule at the same time?
     errors.extend(optionality::validate_message(message, version));
     errors.extend(length::validate_message(message, version));
-        errors.extend(table_values::validate_message(
-            uri,
-            message,
-            version,
-            workspace_specs,
+    errors.extend(table_values::validate_message(
+        uri,
+        message,
+        version,
+        workspace_specs,
         opts,
-        ));
+    ));
     errors.extend(datatypes::validate_message(message, version));
     // TODO: message schema validation
 

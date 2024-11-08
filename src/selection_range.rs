@@ -34,10 +34,18 @@ pub fn handle_selection_range_request(
         .positions
         .into_iter()
         .map(|position| {
-            let location = position_to_offset(message.raw_value(), position.line, position.character)
-                .and_then(|offset| message.locate_cursor(offset))?;
+            let location =
+                position_to_offset(message.raw_value(), position.line, position.character)
+                    .and_then(|offset| message.locate_cursor(offset))?;
 
-            let LocatedCursor { segment, field, repeat, component, sub_component, .. } = location;
+            let LocatedCursor {
+                segment,
+                field,
+                repeat,
+                component,
+                sub_component,
+                ..
+            } = location;
             let segment = segment?.2;
 
             let range = SelectionRange {
@@ -79,9 +87,11 @@ pub fn handle_selection_range_request(
 
             Some(range)
         })
-        .map(|range| range.unwrap_or_else(|| SelectionRange {
-            range: lsp_types::Range::default(),
-            parent: None,
-        }))
+        .map(|range| {
+            range.unwrap_or_else(|| SelectionRange {
+                range: lsp_types::Range::default(),
+                parent: None,
+            })
+        })
         .collect())
 }

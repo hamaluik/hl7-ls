@@ -1,4 +1,8 @@
-use crate::{commands::{CMD_GENERATE_CONTROL_ID, CMD_SET_TO_NOW}, spec, utils::{lsp_range_to_std_range, std_range_to_lsp_range}};
+use crate::{
+    commands::{CMD_GENERATE_CONTROL_ID, CMD_SET_TO_NOW},
+    spec,
+    utils::{lsp_range_to_std_range, std_range_to_lsp_range},
+};
 use color_eyre::{eyre::ContextCompat, Result};
 use hl7_parser::{parse_message_with_lenient_newlines, Message};
 use lsp_textdocument::TextDocuments;
@@ -42,7 +46,7 @@ fn generate_control_id(range: &Range, uri: &Uri, message: &Message) -> Option<Co
     // only available if MSH.10 is present
     message
         .query("MSH.10")
-        .map(|existing_control_id| {
+        .and_then(|existing_control_id| {
             // only if the action range is within the existing control ID
             let action_range = lsp_range_to_std_range(message.raw_value(), *range)?;
             let existing_range = existing_control_id.range();
@@ -67,7 +71,6 @@ fn generate_control_id(range: &Range, uri: &Uri, message: &Message) -> Option<Co
                 disabled: None,
             })
         })
-        .flatten()
 }
 
 #[instrument(level = "trace", skip(uri, message))]
@@ -89,25 +92,24 @@ fn set_time_to_now(range: &Range, uri: &Uri, message: &Message) -> Option<CodeAc
     if spec::is_field_a_timestamp(version, segment_name, fi) {
         tracing::trace!("field is a timestamp, generating code action");
         let range = std_range_to_lsp_range(message.raw_value(), repeat.range.clone());
-            Some(CodeAction {
-                title: format!("Set {cursor_location} to now"),
-                kind: Some(CodeActionKind::REFACTOR),
-                diagnostics: None,
-                edit: None,
-                command: Some(Command {
-                    title: "Set timestamp to now".to_string(),
-                    command: CMD_SET_TO_NOW.to_string(),
-                    arguments: Some(vec![
-                        serde_json::to_value(uri.clone()).expect("can serialize uri"),
-                        serde_json::to_value(range).expect("can serialize range"),
-                    ]),
-                }),
-                data: None,
-                is_preferred: None,
-                disabled: None,
-            })
-    }
-    else {
+        Some(CodeAction {
+            title: format!("Set {cursor_location} to now"),
+            kind: Some(CodeActionKind::REFACTOR),
+            diagnostics: None,
+            edit: None,
+            command: Some(Command {
+                title: "Set timestamp to now".to_string(),
+                command: CMD_SET_TO_NOW.to_string(),
+                arguments: Some(vec![
+                    serde_json::to_value(uri.clone()).expect("can serialize uri"),
+                    serde_json::to_value(range).expect("can serialize range"),
+                ]),
+            }),
+            data: None,
+            is_preferred: None,
+            disabled: None,
+        })
+    } else {
         tracing::trace!("field is not a timestamp");
         None
     }

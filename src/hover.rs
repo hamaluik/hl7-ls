@@ -1,7 +1,8 @@
 use crate::{
     spec,
     utils::{position_to_offset, range_from_offsets},
-    workspace::specs::WorkspaceSpecs, Opts,
+    workspace::specs::WorkspaceSpecs,
+    Opts,
 };
 use chrono::{DateTime, Local, Utc};
 use color_eyre::{eyre::ContextCompat, Result};
