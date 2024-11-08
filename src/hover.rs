@@ -1,7 +1,7 @@
 use crate::{
     spec,
     utils::{position_to_offset, range_from_offsets},
-    workspace::specs::WorkspaceSpecs,
+    workspace::specs::WorkspaceSpecs, Opts,
 };
 use chrono::{DateTime, Local, Utc};
 use color_eyre::{eyre::ContextCompat, Result};
@@ -10,11 +10,12 @@ use lsp_textdocument::TextDocuments;
 use lsp_types::{Hover, HoverContents, HoverParams, MarkedString};
 use tracing::instrument;
 
-#[instrument(level = "debug", skip(params, documents, workspace_specs))]
+#[instrument(level = "debug", skip(params, documents, workspace_specs, opts))]
 pub fn handle_hover_request(
     params: HoverParams,
     documents: &TextDocuments,
     workspace_specs: Option<&WorkspaceSpecs>,
+    opts: &Opts,
 ) -> Result<Hover> {
     let uri = params.text_document_position_params.text_document.uri;
     let text = documents
@@ -224,6 +225,12 @@ pub fn handle_hover_request(
 
     drop(_format_span_guard);
     tracing::trace!(hover_text = %hover_text, range = ?range, "generated hover text");
+
+    let hover_text = if opts.vscode {
+        hover_text.replace("\n", "<br/>\n")
+    } else {
+        hover_text
+    };
 
     let hover = Hover {
         contents: HoverContents::Scalar(MarkedString::from_markdown(hover_text)),

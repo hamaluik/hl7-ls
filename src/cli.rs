@@ -22,6 +22,13 @@ pub struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
+    /// Enable Visual Studio Code mode
+    ///
+    /// This mode is intended for when running this language server through
+    /// Visual Studio Code.
+    #[arg(long)]
+    pub vscode: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

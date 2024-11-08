@@ -113,8 +113,13 @@ fn setup_logging(cli: Cli) -> Result<()> {
     Ok(())
 }
 
+struct Opts {
+    vscode: bool,
+}
+
 fn main() -> Result<()> {
     let cli = cli::cli();
+    let opts = Opts { vscode: cli.vscode };
     setup_logging(cli).wrap_err_with(|| "Failed to setup logging")?;
 
     let initial_span = tracing::info_span!("initialise");
@@ -186,7 +191,7 @@ fn main() -> Result<()> {
         .wrap_err_with(|| "Failed to finish LSP initialisation")?;
     drop(_initial_span_guard);
 
-    main_loop(connection, client_capabilities, workspace_folders)?;
+    main_loop(connection, client_capabilities, workspace_folders, opts)?;
     io_threads.join()?;
 
     // Shut down gracefully.
@@ -213,12 +218,13 @@ fn send_log_message<S: ToString>(
 
 #[instrument(
     level = "debug",
-    skip(connection, client_capabilities, workspace_folders)
+    skip(connection, client_capabilities, workspace_folders, opts)
 )]
 fn main_loop(
     connection: Connection,
     client_capabilities: ClientCapabilities,
     workspace_folders: Option<Vec<WorkspaceFolder>>,
+    opts: Opts,
 ) -> Result<()> {
     let mut documents = TextDocuments::new();
 
@@ -265,6 +271,7 @@ fn main_loop(
                             params,
                             &documents,
                             workspace.as_ref().map(|w| &*w.specs),
+                            &opts,
                         )
                         .map_err(|e| {
                             tracing::warn!("Failed to handle hover request: {e:?}");
