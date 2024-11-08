@@ -243,6 +243,21 @@ impl WorkspaceSpecs {
             .next() // TODO: merge allowed values? or only pick one? or group by validation?
             .unwrap_or_default()
     }
+
+    pub fn is_field_required(&self, segment: &str, field: usize) -> bool {
+        (&self.specs)
+            .into_iter()
+            .filter_map(|x| {
+                let (_, spec) = x.pair();
+                spec.segments
+                    .iter()
+                    .find(|s| s.name == segment)
+                    .and_then(|s| s.fields.get(&field))
+                    .map(|f| f.required.unwrap_or(false))
+            })
+            .next()
+            .unwrap_or(false)
+    }
 }
 
 #[cfg(test)]
@@ -257,7 +272,6 @@ mod tests {
                 SegmentSpec {
                     name: "MSH".to_string(),
                     description: Some("Message Header".to_string()),
-                    required: Some(true),
                     fields: [(
                         1,
                         FieldSpec {
@@ -277,7 +291,6 @@ mod tests {
                 SegmentSpec {
                     name: "PID".to_string(),
                     description: Some("Patient Identification".to_string()),
-                    required: None,
                     fields: [(
                         3,
                         FieldSpec {

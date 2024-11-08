@@ -80,7 +80,11 @@ pub fn validate_message(
 
     // TODO: these all iterate over the message multiple times; maybe it would
     // be more performant to iterate once and check each rule at the same time?
-    errors.extend(optionality::validate_message(message, version));
+    errors.extend(optionality::validate_message(
+        message,
+        version,
+        workspace_specs,
+    ));
     errors.extend(length::validate_message(message, version));
     errors.extend(table_values::validate_message(
         uri,

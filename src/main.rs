@@ -314,12 +314,12 @@ fn handle_msg(
                 return Ok(());
             }
 
-            if let Some(req) = handle_hover_req(req, &documents, workspace, &opts, &connection)
-                .and_then(|req| handle_document_symbols_req(req, &documents, &connection))
-                .and_then(|req| handle_completion_request(req, &documents, &connection))
-                .and_then(|req| handle_code_action_request(req, &documents, &connection))
-                .and_then(|req| handle_command_request(req, &documents, &connection))
-                .and_then(|req| handle_selection_range_req(req, &documents, &connection))
+            if let Some(req) = handle_hover_req(req, documents, workspace, opts, connection)
+                .and_then(|req| handle_document_symbols_req(req, documents, connection))
+                .and_then(|req| handle_completion_request(req, documents, connection))
+                .and_then(|req| handle_code_action_request(req, documents, connection))
+                .and_then(|req| handle_command_request(req, documents, connection))
+                .and_then(|req| handle_selection_range_req(req, documents, connection))
             {
                 tracing::warn!("unhandled request: {req:?}");
             }
@@ -361,7 +361,7 @@ fn handle_msg(
 
                 if let Some(uri) = uri {
                     if let Err(e) =
-                        handle_diagnostics(&connection, &uri, version, &documents, workspace, &opts)
+                        handle_diagnostics(connection, &uri, version, documents, workspace, opts)
                     {
                         tracing::error!("Failed to handle diagnostics: {e:?}");
                     }
