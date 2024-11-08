@@ -1,6 +1,7 @@
 use cli::Cli;
 use color_eyre::eyre::Context;
 use color_eyre::Result;
+use crossbeam_channel::select;
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError};
 use lsp_textdocument::TextDocuments;
 use lsp_types::notification::{
@@ -262,79 +263,111 @@ fn main_loop(
     drop(_load_custom_validators_span_guard);
 
     tracing::debug!("starting main loop");
-    // TODO: select on this _and_ the custom spec changes channel
-    // to publish diagnostics on change
-    for msg in &connection.receiver {
-        match msg {
-            Message::Request(req) => {
-                let request_span =
-                    tracing::debug_span!("request", method = ?req.method, id = ?req.id);
-                let _request_span_guard = request_span.enter();
-
-                if connection.handle_shutdown(&req)? {
-                    return Ok(());
+    if let Some(workspace) = workspace {
+        loop {
+            select! {
+                recv(&connection.receiver) -> msg => {
+                    let msg = msg.wrap_err_with(|| "Failed to receive message")?;
+                    handle_msg(msg, &connection, &mut documents, &opts, Some(&workspace), diagnostics_enabled)
+                        .wrap_err_with(|| "Failed to handle message")?;
                 }
-
-                if let Some(req) = handle_hover_req(req, &documents, &workspace, &opts, &connection)
-                    .and_then(|req| handle_document_symbols_req(req, &documents, &connection))
-                    .and_then(|req| handle_completion_request(req, &documents, &connection))
-                    .and_then(|req| handle_code_action_request(req, &documents, &connection))
-                    .and_then(|req| handle_command_request(req, &documents, &connection))
-                    .and_then(|req| handle_selection_range_req(req, &documents, &connection))
-                {
-                    tracing::warn!("unhandled request: {req:?}");
-                }
-            }
-            Message::Response(resp) => {
-                tracing::warn!(response = ?resp, "got response from server??");
-            }
-            Message::Notification(not) => {
-                let notification_span = tracing::debug_span!("notification", method = ?not.method);
-                let _notification_span_guard = notification_span.enter();
-
-                if documents.listen(not.method.as_str(), &not.params) {
-                    if !diagnostics_enabled {
-                        continue;
-                    }
-
-                    let diagnostics_span = tracing::debug_span!("diagnostics");
-                    let _diagnostics_span_guard = diagnostics_span.enter();
-
-                    // document was updated, update diagnostics
-                    // first, extract the uri
-                    let (uri, version) = match not.method.as_str() {
-                        <DidOpenTextDocument as notification::Notification>::METHOD => {
-                            let params: DidOpenTextDocumentParams =
-                                serde_json::from_value(not.params.clone())
-                                    .expect("Expect receive DidOpenTextDocumentParams");
-                            let text_document = params.text_document;
-                            (Some(text_document.uri), Some(text_document.version))
-                        }
-                        <DidChangeTextDocument as notification::Notification>::METHOD => {
-                            let params: DidChangeTextDocumentParams =
-                                serde_json::from_value(not.params.clone())
-                                    .expect("Expect receive DidChangeTextDocumentParams");
-                            let text_document = params.text_document;
-                            (Some(text_document.uri), Some(text_document.version))
-                        }
-                        _ => (None, None),
-                    };
-
-                    if let Some(uri) = uri {
-                        if let Err(e) = handle_diagnostics(
-                            &connection,
-                            &uri,
-                            version,
-                            &documents,
-                            &workspace,
-                            &opts,
-                        ) {
+                recv(workspace._custom_spec_changes) -> _ => {
+                    for (document_uri, document) in documents.documents() {
+                        if let Err(e) = handle_diagnostics(&connection, document_uri, Some(document.version()), &documents, Some(&workspace), &opts) {
                             tracing::error!("Failed to handle diagnostics: {e:?}");
                         }
                     }
-                } else {
-                    tracing::warn!("unhandled notification: {not:?}");
                 }
+            }
+        }
+    } else {
+        for msg in &connection.receiver {
+            handle_msg(
+                msg,
+                &connection,
+                &mut documents,
+                &opts,
+                workspace.as_ref(),
+                diagnostics_enabled,
+            )
+            .wrap_err_with(|| "Failed to handle message")?;
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_msg(
+    msg: Message,
+    connection: &Connection,
+    documents: &mut TextDocuments,
+    opts: &Opts,
+    workspace: Option<&Workspace>,
+    diagnostics_enabled: bool,
+) -> Result<()> {
+    match msg {
+        Message::Request(req) => {
+            let request_span = tracing::debug_span!("request", method = ?req.method, id = ?req.id);
+            let _request_span_guard = request_span.enter();
+
+            if connection.handle_shutdown(&req)? {
+                return Ok(());
+            }
+
+            if let Some(req) = handle_hover_req(req, &documents, workspace, &opts, &connection)
+                .and_then(|req| handle_document_symbols_req(req, &documents, &connection))
+                .and_then(|req| handle_completion_request(req, &documents, &connection))
+                .and_then(|req| handle_code_action_request(req, &documents, &connection))
+                .and_then(|req| handle_command_request(req, &documents, &connection))
+                .and_then(|req| handle_selection_range_req(req, &documents, &connection))
+            {
+                tracing::warn!("unhandled request: {req:?}");
+            }
+        }
+        Message::Response(resp) => {
+            tracing::warn!(response = ?resp, "got response from server??");
+        }
+        Message::Notification(not) => {
+            let notification_span = tracing::debug_span!("notification", method = ?not.method);
+            let _notification_span_guard = notification_span.enter();
+
+            if documents.listen(not.method.as_str(), &not.params) {
+                if !diagnostics_enabled {
+                    return Ok(());
+                }
+
+                let diagnostics_span = tracing::debug_span!("diagnostics");
+                let _diagnostics_span_guard = diagnostics_span.enter();
+
+                // document was updated, update diagnostics
+                // first, extract the uri
+                let (uri, version) = match not.method.as_str() {
+                    <DidOpenTextDocument as notification::Notification>::METHOD => {
+                        let params: DidOpenTextDocumentParams =
+                            serde_json::from_value(not.params.clone())
+                                .expect("Expect receive DidOpenTextDocumentParams");
+                        let text_document = params.text_document;
+                        (Some(text_document.uri), Some(text_document.version))
+                    }
+                    <DidChangeTextDocument as notification::Notification>::METHOD => {
+                        let params: DidChangeTextDocumentParams =
+                            serde_json::from_value(not.params.clone())
+                                .expect("Expect receive DidChangeTextDocumentParams");
+                        let text_document = params.text_document;
+                        (Some(text_document.uri), Some(text_document.version))
+                    }
+                    _ => (None, None),
+                };
+
+                if let Some(uri) = uri {
+                    if let Err(e) =
+                        handle_diagnostics(&connection, &uri, version, &documents, workspace, &opts)
+                    {
+                        tracing::error!("Failed to handle diagnostics: {e:?}");
+                    }
+                }
+            } else {
+                tracing::warn!("unhandled notification: {not:?}");
             }
         }
     }
@@ -347,7 +380,7 @@ fn handle_diagnostics(
     uri: &Uri,
     version: Option<i32>,
     documents: &TextDocuments,
-    workspace: &Option<Workspace>,
+    workspace: Option<&Workspace>,
     opts: &Opts,
 ) -> Result<()> {
     let text = documents.get_document_content(uri, None);
@@ -391,7 +424,7 @@ where
 fn handle_hover_req(
     req: Request,
     documents: &TextDocuments,
-    workspace: &Option<Workspace>,
+    workspace: Option<&Workspace>,
     opts: &Opts,
     connection: &Connection,
 ) -> Option<Request> {
@@ -501,11 +534,10 @@ fn handle_command_request(
     match cast_request::<ExecuteCommand>(req) {
         Ok((id, params)) => {
             tracing::debug!("got ExecuteCommand request");
-            let result =
-                commands::handle_execute_command_request(params, documents).map_err(|e| {
-                    tracing::warn!("Failed to handle execute command request: {e:?}");
-                    e
-                });
+            let result = commands::handle_execute_command_request(params, documents).map_err(|e| {
+                tracing::warn!("Failed to handle execute command request: {e:?}");
+                e
+            });
 
             let (edit, resp) = match result {
                 Ok(Some(command_result)) => match command_result {
