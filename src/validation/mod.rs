@@ -1,7 +1,4 @@
-use crate::{
-    utils::position_from_offset,
-    workspace::specs::WorkspaceSpecs,
-};
+use crate::{utils::position_from_offset, workspace::specs::WorkspaceSpecs, Opts};
 use hl7_parser::Message;
 use lsp_types::{Diagnostic, DiagnosticSeverity, Uri};
 use std::{fmt, ops::Range};
@@ -60,11 +57,12 @@ impl ValidationError {
     }
 }
 
-#[instrument(level = "debug", skip(message, workspace_specs))]
+#[instrument(level = "debug", skip(message, workspace_specs, opts))]
 pub fn validate_message(
     uri: &Uri,
     message: &Message,
     workspace_specs: &Option<&WorkspaceSpecs>,
+    opts: &Opts,
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     if message.segments().count() < 2 {
@@ -84,12 +82,13 @@ pub fn validate_message(
     // be more performant to iterate once and check each rule at the same time?
     errors.extend(optionality::validate_message(message, version));
     errors.extend(length::validate_message(message, version));
-    errors.extend(table_values::validate_message(
-        uri,
-        message,
-        version,
-        workspace_specs,
-    ));
+        errors.extend(table_values::validate_message(
+            uri,
+            message,
+            version,
+            workspace_specs,
+        opts,
+        ));
     errors.extend(datatypes::validate_message(message, version));
     // TODO: message schema validation
 

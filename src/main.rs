@@ -34,11 +34,11 @@ mod completion;
 mod diagnostics;
 mod document_symbols;
 mod hover;
-pub mod spec;
-pub mod utils;
+mod selection_range;
 mod validation;
 mod workspace;
-mod selection_range;
+pub mod spec;
+pub mod utils;
 
 fn setup_logging(cli: Cli) -> Result<()> {
     let use_colours = match (cli.colour, &cli.command) {
@@ -115,11 +115,22 @@ fn setup_logging(cli: Cli) -> Result<()> {
 
 struct Opts {
     vscode: bool,
+    disable_std_table_validations: bool,
 }
+
+impl From<&Cli> for Opts {
+    fn from(value: &Cli) -> Self {
+        Self {
+            vscode: value.vscode,
+            disable_std_table_validations: value.disable_std_table_validations,
+        }
+    }
+}
+
 
 fn main() -> Result<()> {
     let cli = cli::cli();
-    let opts = Opts { vscode: cli.vscode };
+    let opts = (&cli).into();
     setup_logging(cli).wrap_err_with(|| "Failed to setup logging")?;
 
     let initial_span = tracing::info_span!("initialise");
@@ -491,7 +502,7 @@ fn main_loop(
 
                     if let Some(uri) = uri {
                         if let Err(e) =
-                            handle_diagnostics(&connection, &uri, version, &documents, &workspace)
+                            handle_diagnostics(&connection, &uri, version, &documents, &workspace, &opts)
                         {
                             tracing::error!("Failed to handle diagnostics: {e:?}");
                         }
@@ -505,13 +516,14 @@ fn main_loop(
     Ok(())
 }
 
-#[instrument(level = "debug", skip(connection, documents, workspace))]
+#[instrument(level = "debug", skip(connection, documents, workspace, opts))]
 fn handle_diagnostics(
     connection: &Connection,
     uri: &Uri,
     version: Option<i32>,
     documents: &TextDocuments,
     workspace: &Option<Workspace>,
+    opts: &Opts,
 ) -> Result<()> {
     let text = documents.get_document_content(uri, None);
     if let Some(text) = text {
@@ -522,6 +534,7 @@ fn handle_diagnostics(
                 uri,
                 &message,
                 &workspace.as_ref().map(|w| w.specs.deref()),
+                opts,
             )
             .into_iter()
             .map(|e| e.into_diagnostic(text))

@@ -29,6 +29,13 @@ pub struct Cli {
     #[arg(long)]
     pub vscode: bool,
 
+    /// Disable standard table value validation checks
+    ///
+    /// This will disable table value validation checks for table values that
+    /// are not defined in the workspace (and come from the HL7 standard).
+    #[arg(long)]
+    pub disable_std_table_validations: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

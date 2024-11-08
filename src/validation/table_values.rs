@@ -1,16 +1,17 @@
 use super::{ValidationCode, ValidationError};
-use crate::workspace::specs::WorkspaceSpecs;
+use crate::{workspace::specs::WorkspaceSpecs, Opts};
 use hl7_definitions::table_values;
 use hl7_parser::Message;
 use lsp_types::{DiagnosticSeverity, Uri};
 use tracing::instrument;
 
-#[instrument(level = "debug", skip(message))]
+#[instrument(level = "debug", skip(uri, message, version, workspace_specs, opts))]
 pub fn validate_message(
     uri: &Uri,
     message: &Message,
     version: &str,
     workspace_specs: &Option<&WorkspaceSpecs>,
+    opts: &Opts,
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
 
@@ -27,6 +28,10 @@ pub fn validate_message(
                     .unwrap_or_default();
 
                 if workspace_table_values.is_empty() {
+                    if opts.disable_std_table_validations {
+                        continue;
+                    }
+
                     // use the default table values
                     if let Some(field_definition) = segment_definition.fields.get(fi) {
                         if let Some(table) = field_definition.table {
