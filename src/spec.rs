@@ -218,3 +218,55 @@ pub fn component_table_values(
             values
         })
 }
+
+pub fn segment_parameters(version: &str, segment: &str) -> Option<Vec<String>> {
+    hl7_definitions::get_segment(version, segment).map(|s| {
+        s.fields
+            .iter()
+            .map(|f| {
+                let required = match f.optionality {
+                    hl7_definitions::FieldOptionality::Required => "*",
+                    hl7_definitions::FieldOptionality::Optional => "",
+                    hl7_definitions::FieldOptionality::Conditional => "?",
+                    hl7_definitions::FieldOptionality::BackwardCompatibility => "!",
+                };
+                format!(
+                    "{required}{description} ({datatype})",
+                    description = f.description,
+                    datatype = hl7_definitions::get_field(version, f.datatype)
+                        .map(|d| d.description)
+                        .unwrap_or_else(|| f.datatype)
+                )
+            })
+            .collect()
+    })
+}
+
+pub fn field_parameters(version: &str, segment: &str, field: usize) -> Option<Vec<String>> {
+    hl7_definitions::get_segment(version, segment)
+        .and_then(|s| s.fields.get(field - 1))
+        .map(|f| {
+            hl7_definitions::get_field(version, f.datatype)
+                .map(|d| {
+                    d.subfields
+                        .iter()
+                        .map(|c| {
+                            let required = match c.optionality {
+                                hl7_definitions::FieldOptionality::Required => "*",
+                                hl7_definitions::FieldOptionality::Optional => "",
+                                hl7_definitions::FieldOptionality::Conditional => "?",
+                                hl7_definitions::FieldOptionality::BackwardCompatibility => "!",
+                            };
+                            format!(
+                                "{required}{description} ({datatype})",
+                                description = c.description,
+                                datatype = hl7_definitions::get_field(version, c.datatype)
+                                    .map(|d| d.description)
+                                    .unwrap_or_else(|| c.datatype)
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+}

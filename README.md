@@ -19,6 +19,7 @@ A Language Server for HL7v2 messages implementing [LSP 3.17](https://microsoft.g
     * `hl7.generateControlId`: Set MSH.10 to a new random 20-character string
 - Selection Range
 - Custom field descriptions
+- Signature Help
 
 ### In Progress
 
@@ -27,7 +28,6 @@ A Language Server for HL7v2 messages implementing [LSP 3.17](https://microsoft.g
 ### Planned
 
 - Semantic Tokens
-- Signature Help
 
 ### Not Planned
 

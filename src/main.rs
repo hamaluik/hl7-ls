@@ -9,7 +9,7 @@ use lsp_types::notification::{
 };
 use lsp_types::request::{
     ApplyWorkspaceEdit, CodeActionRequest, Completion, DocumentSymbolRequest, ExecuteCommand,
-    HoverRequest, Request as LspRequest, SelectionRangeRequest,
+    HoverRequest, Request as LspRequest, SelectionRangeRequest, SignatureHelpRequest,
 };
 use lsp_types::{
     ApplyWorkspaceEditParams, ClientCapabilities, CodeActionOptions, CodeActionProviderCapability,
@@ -36,6 +36,7 @@ mod diagnostics;
 mod document_symbols;
 mod hover;
 mod selection_range;
+mod signature_help;
 pub mod spec;
 pub mod utils;
 mod validation;
@@ -186,6 +187,11 @@ fn main() -> Result<()> {
             ..Default::default()
         }),
         selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
+        signature_help_provider: Some(lsp_types::SignatureHelpOptions {
+            trigger_characters: Some(vec!["|".to_string(), "^".to_string()]),
+            retrigger_characters: Some(vec!["|".to_string(), "^".to_string()]),
+            ..Default::default()
+        }),
         ..Default::default()
     })
     .expect("can to serialize server capabilities");
@@ -320,6 +326,7 @@ fn handle_msg(
                 .and_then(|req| handle_code_action_request(req, documents, connection))
                 .and_then(|req| handle_command_request(req, documents, connection))
                 .and_then(|req| handle_selection_range_req(req, documents, connection))
+                .and_then(|req| handle_signature_help_request(req, documents, connection))
             {
                 tracing::warn!("unhandled request: {req:?}");
             }
@@ -625,7 +632,32 @@ fn handle_selection_range_req(
             tracing::debug!("got SelectionRange request");
             let resp =
                 selection_range::handle_selection_range_request(params, documents).map_err(|e| {
-                    tracing::warn!("Failed to handle code action request: {e:?}");
+                    tracing::warn!("Failed to handle selection range request: {e:?}");
+                    e
+                });
+            let resp = build_response(id, resp);
+            connection
+                .sender
+                .send(Message::Response(resp))
+                .expect("can send response");
+            None
+        }
+        Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+        Err(ExtractError::MethodMismatch(req)) => Some(req),
+    }
+}
+
+fn handle_signature_help_request(
+    req: Request,
+    documents: &TextDocuments,
+    connection: &Connection,
+) -> Option<Request> {
+    match cast_request::<SignatureHelpRequest>(req) {
+        Ok((id, params)) => {
+            tracing::debug!("got SignatureHelp request");
+            let resp =
+                signature_help::handle_signature_help_request(params, documents).map_err(|e| {
+                    tracing::warn!("Failed to handle signature help request: {e:?}");
                     e
                 });
             let resp = build_response(id, resp);
