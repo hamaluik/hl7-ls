@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use super::CommandResult;
 use chrono::{DateTime, Utc};
 use color_eyre::{eyre::ContextCompat, Result};
 use hl7_parser::datetime::TimeStamp;
 use lsp_textdocument::TextDocuments;
 use lsp_types::{ExecuteCommandParams, Range, TextEdit, Uri, WorkspaceEdit};
+use std::collections::HashMap;
 use tracing::instrument;
 
 #[instrument(level = "trace", skip(_documents))]

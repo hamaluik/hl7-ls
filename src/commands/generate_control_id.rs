@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use super::CommandResult;
 use crate::utils::std_range_to_lsp_range;
 use color_eyre::{
     eyre::{Context, ContextCompat},
@@ -7,8 +7,8 @@ use color_eyre::{
 use hl7_parser::parse_message_with_lenient_newlines;
 use lsp_textdocument::TextDocuments;
 use lsp_types::{ExecuteCommandParams, TextEdit, Uri, WorkspaceEdit};
+use std::collections::HashMap;
 use tracing::instrument;
-use super::CommandResult;
 
 #[instrument(level = "debug", skip(documents))]
 pub fn handle_generate_control_id_command(

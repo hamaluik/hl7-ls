@@ -26,16 +26,15 @@ pub fn handle_encode_text_command(
         .and_then(|v| v.as_str().map(|s| s.parse().ok()).flatten());
     let separators = uri
         .and_then(|uri| documents.get_document_content(&uri, None))
-        .and_then(|text| {
-            parse_message_with_lenient_newlines(text)
-            .ok()
-        })
+        .and_then(|text| parse_message_with_lenient_newlines(text).ok())
         .map(|message| message.separators.clone())
         .unwrap_or_default();
 
     let encoded = separators.encode(text).to_string();
 
-    Ok(Some(CommandResult::ValueResponse { value: serde_json::Value::String(encoded) }))
+    Ok(Some(CommandResult::ValueResponse {
+        value: serde_json::Value::String(encoded),
+    }))
 }
 
 #[instrument(level = "debug", skip(documents))]
@@ -59,13 +58,12 @@ pub fn handle_decode_text_command(
         .and_then(|v| v.as_str().map(|s| s.parse().ok()).flatten());
     let separators = uri
         .and_then(|uri| documents.get_document_content(&uri, None))
-        .and_then(|text| {
-            parse_message_with_lenient_newlines(text)
-            .ok()
-        })
+        .and_then(|text| parse_message_with_lenient_newlines(text).ok())
         .map(|message| message.separators.clone())
         .unwrap_or_default();
 
     let decoded = separators.decode(text).to_string();
-    Ok(Some(CommandResult::ValueResponse { value: serde_json::Value::String(decoded) }))
+    Ok(Some(CommandResult::ValueResponse {
+        value: serde_json::Value::String(decoded),
+    }))
 }

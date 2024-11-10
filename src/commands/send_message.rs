@@ -55,13 +55,14 @@ pub fn handle_send_message_command(
     drop(_parse_span_guard);
 
     tracing::trace!(?uri, ?hostname, ?port, "Sending message");
-    let response = send_message(hostname, port as u16, text, timeout)
-        .wrap_err("Failed to send message")?;
+    let response =
+        send_message(hostname, port as u16, text, timeout).wrap_err("Failed to send message")?;
     tracing::trace!(?response, "Received response");
 
-    Ok(Some(CommandResult::ValueResponse { value: serde_json::Value::String(response) }))
+    Ok(Some(CommandResult::ValueResponse {
+        value: serde_json::Value::String(response),
+    }))
 }
-
 
 #[instrument(level = "info", skip(host, port))]
 fn send_message(host: &str, port: u16, message: &str, timeout: f64) -> Result<String> {

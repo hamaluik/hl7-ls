@@ -472,7 +472,7 @@ dependencies = [
 [[package]]
 name = "hl7-parser"
 version = "0.3.0"
-source = "git+https://github.com/hamaluik/hl7-parser.git?branch=v030#cd243b414c52d0c2c3e16f5528f3fb54efced5db"
+source = "git+https://github.com/hamaluik/hl7-parser.git?branch=v030#e27024d37f6c55efa57771b60b0d6723b689f3c2"
 dependencies = [
  "chrono",
  "nom",

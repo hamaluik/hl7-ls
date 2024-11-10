@@ -1,5 +1,7 @@
 use crate::{
-    commands::{CMD_DECODE_SELECTION, CMD_ENCODE_SELECTION, CMD_GENERATE_CONTROL_ID, CMD_SET_TO_NOW},
+    commands::{
+        CMD_DECODE_SELECTION, CMD_ENCODE_SELECTION, CMD_GENERATE_CONTROL_ID, CMD_SET_TO_NOW,
+    },
     spec,
     utils::{lsp_range_to_std_range, std_range_to_lsp_range},
 };

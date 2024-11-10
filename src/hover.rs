@@ -52,7 +52,11 @@ pub fn handle_hover_request(
     // format the hover text
     let format_span = tracing::trace_span!("format hover text");
     let _format_span_guard = format_span.enter();
-    let mut hover_text = format!("`{location}`");
+    let located_value = location
+        .value(&message.separators)
+        .map(|v| v.to_string())
+        .unwrap_or_default();
+    let mut hover_text = format!("`{location}`: `{located_value}`");
     let mut url = None;
     let mut timestamp = None;
     if let Some(seg) = location.segment {
@@ -65,7 +69,7 @@ pub fn handle_hover_request(
         }
 
         let description = spec::segment_description(message_version, seg.0);
-        hover_text.push_str(format!(":\n  {segment}: {description}", segment = seg.0).as_str());
+        hover_text.push_str(format!("\n  {segment}: {description}", segment = seg.0).as_str());
 
         if let Some(field) = location.field {
             let field_description = spec::describe_field(message_version, seg.0, field.0);

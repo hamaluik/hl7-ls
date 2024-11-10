@@ -40,8 +40,12 @@ pub fn handle_execute_command_request(
         }
         CMD_ENCODE_TEXT => encode_decode_text::handle_encode_text_command(params, documents),
         CMD_DECODE_TEXT => encode_decode_text::handle_decode_text_command(params, documents),
-        CMD_ENCODE_SELECTION => encode_decode_selection::handle_encode_selection_command(params, documents),
-        CMD_DECODE_SELECTION => encode_decode_selection::handle_decode_selection_command(params, documents),
+        CMD_ENCODE_SELECTION => {
+            encode_decode_selection::handle_encode_selection_command(params, documents)
+        }
+        CMD_DECODE_SELECTION => {
+            encode_decode_selection::handle_decode_selection_command(params, documents)
+        }
         _ => {
             tracing::warn!(command = ?params.command, args = ?params.arguments, "Unknown command");
             Ok(None)

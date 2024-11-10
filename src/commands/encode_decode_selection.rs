@@ -55,7 +55,7 @@ pub fn handle_encode_selection_command(
             new_text: encoded,
         }],
     );
-    
+
     Ok(Some(CommandResult::WorkspaceEdit {
         label: "Encode selection",
         edit: WorkspaceEdit {
@@ -112,7 +112,7 @@ pub fn handle_decode_selection_command(
             new_text: encoded,
         }],
     );
-    
+
     Ok(Some(CommandResult::WorkspaceEdit {
         label: "Encode selection",
         edit: WorkspaceEdit {
