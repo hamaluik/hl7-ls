@@ -3,7 +3,6 @@ use hl7_parser::{locate::LocatedCursor, parse_message_with_lenient_newlines};
 use lsp_textdocument::TextDocuments;
 use lsp_types::{SelectionRange, SelectionRangeParams};
 use tracing::instrument;
-
 use crate::utils::{position_to_offset, std_range_to_lsp_range};
 
 #[instrument(level = "debug", skip(params, documents))]

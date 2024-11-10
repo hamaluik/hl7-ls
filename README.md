@@ -127,6 +127,50 @@ Set MSH.10 to a new random 20-character string.
 
 1. `uri`: The URI of the document to update
 
+### Encode Text: `hl7.encodeText`
+
+Encode (escape) HL7 characters in the given text. If the uri is provided, the
+encoding in the document is used; otherwise the default encoding (`|^~\&`) is
+used.
+
+#### Arguments
+
+1. `text`: The text to encode
+2. `uri` (_optional_): The URI of the document used to encode with
+
+### Decode Text: `hl7.decodeText`
+
+Decode (unescape) HL7 characters in the given text. If the uri is provided, the
+encoding in the document is used; otherwise the default encoding (`|^~\&`) is
+used.
+
+#### Arguments
+
+1. `text`: The text to decode
+2. `uri` (_optional_): The URI of the document used to decode with
+
+### Encode Selection: `hl7.encodeSelection`
+
+Encode (escape) the selected range using the encoding in the document. Note
+that encoding is done in-place, so the range will be replaced with the encoded
+text which may cause the range to be invalid.
+
+#### Arguments
+
+1. `uri`: The URI of the document
+2. `range`: The range of the text to encode
+
+### Decode Selection: `hl7.decodeSelection`
+
+Decode (unescape) the selected range using the encoding in the document. Note
+that decoding is done in-place, so the range will be replaced with the decoded
+text which may cause the range to be invalid.
+
+#### Arguments
+
+1. `uri`: The URI of the document
+2. `range`: The range of the text to decode
+
 ## Custom Validation
 
 Custom validation rules can be added to the workspace configuration files. The
@@ -147,7 +191,7 @@ description = "<optional description of the segment>"
 
 [segments.fields.<field number>]
 description = "<optional description of the field>"
-required = <true/false/undefined>
+required = true # optional, defaults to false
 datatype = "<optional HL7 datatype of the field>"
 allowed_values = [["<table value 1>", "<description>"], ["<table value 2>", "<description>"], ...]
 ```

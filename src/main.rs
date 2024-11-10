@@ -183,6 +183,10 @@ fn main() -> Result<()> {
                 commands::CMD_SET_TO_NOW.to_string(),
                 commands::CMD_SEND_MESSAGE.to_string(),
                 commands::CMD_GENERATE_CONTROL_ID.to_string(),
+                commands::CMD_DECODE_TEXT.to_string(),
+                commands::CMD_ENCODE_TEXT.to_string(),
+                commands::CMD_DECODE_SELECTION.to_string(),
+                commands::CMD_ENCODE_SELECTION.to_string(),
             ],
             ..Default::default()
         }),
@@ -556,11 +560,11 @@ fn handle_command_request(
                             error: None,
                         },
                     ),
-                    commands::CommandResult::SentMessage { response } => (
+                    commands::CommandResult::ValueResponse { value } => (
                         None,
                         Response {
                             id,
-                            result: Some(serde_json::Value::String(response)),
+                            result: Some(value),
                             error: None,
                         },
                     ),

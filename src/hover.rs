@@ -46,7 +46,7 @@ pub fn handle_hover_request(
     let _locate_span_guard = locate_span.enter();
     let location = message
         .locate_cursor(offset)
-        .wrap_err_with(|| "Failed to locate cursor in HL7 message")?;
+        .wrap_err_with(|| format!("Failed to locate cursor (at offset {offset}) in HL7 message"))?;
     drop(_locate_span_guard);
 
     // format the hover text

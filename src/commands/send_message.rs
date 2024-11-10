@@ -2,6 +2,9 @@ use color_eyre::{
     eyre::{Context, ContextCompat},
     Result,
 };
+use hl7_parser::parse_message_with_lenient_newlines;
+use lsp_textdocument::TextDocuments;
+use lsp_types::{ExecuteCommandParams, Uri};
 use std::{
     io::{Read, Write},
     net::{TcpStream, ToSocketAddrs},
@@ -9,8 +12,59 @@ use std::{
 };
 use tracing::instrument;
 
+use super::CommandResult;
+
+#[instrument(level = "debug", skip(documents))]
+pub fn handle_send_message_command(
+    params: ExecuteCommandParams,
+    documents: &TextDocuments,
+) -> Result<Option<CommandResult>> {
+    if params.arguments.len() < 3 || params.arguments.len() > 4 {
+        return Err(color_eyre::eyre::eyre!(
+            "Expected 3 or 4 arguments for send message command"
+        ));
+    }
+
+    let uri: Uri = params.arguments[0]
+        .as_str()
+        .and_then(|s| s.parse().ok())
+        .wrap_err("Expected uri as first argument")?;
+
+    let hostname = params.arguments[1]
+        .as_str()
+        .wrap_err("Expected hostname as second argument")?;
+
+    let port = params.arguments[2]
+        .as_u64()
+        .wrap_err("Expected port as third argument")?;
+
+    let timeout = params
+        .arguments
+        .get(3)
+        .and_then(|v| v.as_f64())
+        .unwrap_or(5.0);
+
+    let text = documents
+        .get_document_content(&uri, None)
+        .wrap_err_with(|| format!("no document found for uri: {:?}", uri))?;
+
+    let parse_span = tracing::trace_span!("parse message");
+    let _parse_span_guard = parse_span.enter();
+    let _message = parse_message_with_lenient_newlines(text)
+        .wrap_err_with(|| "Failed to parse HL7 message")?;
+    drop(_parse_span_guard);
+
+    tracing::trace!(?uri, ?hostname, ?port, "Sending message");
+    let response = send_message(hostname, port as u16, text, timeout)
+        .wrap_err("Failed to send message")?;
+    tracing::trace!(?response, "Received response");
+
+    Ok(Some(CommandResult::ValueResponse { value: serde_json::Value::String(response) }))
+}
+
+
 #[instrument(level = "info", skip(host, port))]
-pub fn send_message(host: &str, port: u16, message: &str, timeout: f64) -> Result<String> {
+fn send_message(host: &str, port: u16, message: &str, timeout: f64) -> Result<String> {
     let addr = format!("{}:{}", host, port)
         .to_socket_addrs()
         .wrap_err_with(|| format!("Failed to resolve address for {}:{}", host, port))?

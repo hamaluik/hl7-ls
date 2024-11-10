@@ -1,5 +1,5 @@
 use crate::{
-    commands::{CMD_GENERATE_CONTROL_ID, CMD_SET_TO_NOW},
+    commands::{CMD_DECODE_SELECTION, CMD_ENCODE_SELECTION, CMD_GENERATE_CONTROL_ID, CMD_SET_TO_NOW},
     spec,
     utils::{lsp_range_to_std_range, std_range_to_lsp_range},
 };
@@ -32,6 +32,8 @@ pub fn handle_code_actions_request(
     let code_actions = [
         generate_control_id(&params.range, &uri, &message),
         set_time_to_now(&params.range, &uri, &message),
+        encode(&params.range, &uri, &message),
+        decode(&params.range, &uri, &message),
     ]
     .into_iter()
     .flatten()
@@ -111,4 +113,81 @@ fn set_time_to_now(range: &Range, uri: &Uri, message: &Message) -> Option<CodeAc
         tracing::trace!("field is not a timestamp");
         None
     }
+}
+
+#[instrument(level = "trace", skip(uri, message))]
+fn encode(range: &Range, uri: &Uri, message: &Message) -> Option<CodeAction> {
+    let selection_range = lsp_range_to_std_range(message.raw_value(), *range)?;
+    if selection_range.len() == 0 {
+        return None;
+    }
+
+    let text = message.raw_value();
+    // check if any of the separators are present in the selection, if not, return
+    // None
+    let separators = message.separators;
+    let is_separator = |c: char| {
+        separators.field == c
+            || separators.component == c
+            || separators.subcomponent == c
+            || separators.repetition == c
+            || separators.escape == c
+    };
+    let requires_encoding = text[selection_range.clone()].chars().any(is_separator);
+    if !requires_encoding {
+        return None;
+    }
+
+    Some(CodeAction {
+        title: "Encode selection".to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: None,
+        edit: None,
+        command: Some(Command {
+            title: "Encode selection".to_string(),
+            command: CMD_ENCODE_SELECTION.to_string(),
+            arguments: Some(vec![
+                serde_json::to_value(uri.clone()).expect("can serialize uri"),
+                serde_json::to_value(range).expect("can serialize range"),
+            ]),
+        }),
+        is_preferred: None,
+        disabled: None,
+        data: None,
+    })
+}
+
+#[instrument(level = "trace", skip(uri, message))]
+fn decode(range: &Range, uri: &Uri, message: &Message) -> Option<CodeAction> {
+    let selection_range = lsp_range_to_std_range(message.raw_value(), *range)?;
+    if selection_range.len() == 0 {
+        return None;
+    }
+
+    let text = message.raw_value();
+    // check if any of the separators are present in the selection, if not, return
+    // None
+    let escape = message.separators.escape;
+    let requires_decoding = text[selection_range.clone()].chars().any(|c| c == escape);
+    if !requires_decoding {
+        return None;
+    }
+
+    Some(CodeAction {
+        title: "Decode selection".to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: None,
+        edit: None,
+        command: Some(Command {
+            title: "Decode selection".to_string(),
+            command: CMD_DECODE_SELECTION.to_string(),
+            arguments: Some(vec![
+                serde_json::to_value(uri.clone()).expect("can serialize uri"),
+                serde_json::to_value(range).expect("can serialize range"),
+            ]),
+        }),
+        is_preferred: None,
+        disabled: None,
+        data: None,
+    })
 }
